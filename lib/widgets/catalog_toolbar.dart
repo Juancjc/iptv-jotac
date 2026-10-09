@@ -68,23 +68,34 @@ class CatalogToolbar extends StatelessWidget {
             ),
           ),
         ),
-        SizedBox(
-          height: 66,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            scrollDirection: Axis.horizontal,
-            itemCount: categories.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final category = index == 0 ? null : categories[index - 1];
-              final selected = selectedCategory == category;
-              return FilterChip(
-                selected: selected,
-                showCheckmark: selected,
-                label: Text(category ?? 'Todos'),
-                onSelected: (_) => onCategorySelected(category),
-              );
-            },
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 800),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    value: selectedCategory,
+                    hint: const Text('Categoria'),
+                    borderRadius: BorderRadius.circular(12),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Todas as categorias'),
+                      ),
+                      for (final category in categories)
+                        DropdownMenuItem<String?>(
+                          value: category,
+                          child: Text(category),
+                        ),
+                    ],
+                    onChanged: onCategorySelected,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ],

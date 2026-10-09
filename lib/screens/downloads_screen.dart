@@ -105,17 +105,19 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final (label, color) = switch (status) {
-      DownloadStatus.queued => ('Na fila', Colors.grey),
-      DownloadStatus.downloading => ('Baixando', Colors.blue),
-      DownloadStatus.paused => ('Pausado', Colors.orange),
-      DownloadStatus.completed => ('Concluido', Colors.green),
-      DownloadStatus.failed => ('Falhou', Colors.red),
-      DownloadStatus.canceled => ('Cancelado', Colors.grey),
+      DownloadStatus.queued => ('Na fila', colors.outline),
+      DownloadStatus.downloading => ('Baixando', colors.primary),
+      DownloadStatus.paused => ('Pausado', const Color(0xFFD38A2E)),
+      DownloadStatus.completed => ('Concluido', const Color(0xFF42C65A)),
+      DownloadStatus.failed => ('Falhou', colors.error),
+      DownloadStatus.canceled => ('Cancelado', colors.outline),
     };
     return Chip(
-      label: Text(label, style: const TextStyle(fontSize: 11, color: Colors.white)),
-      backgroundColor: color,
+      label: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      backgroundColor: color.withValues(alpha: .16),
+      side: BorderSide(color: color.withValues(alpha: .4)),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );

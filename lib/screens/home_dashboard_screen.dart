@@ -162,17 +162,13 @@ class _HomeSectionCardState extends State<_HomeSectionCard> {
                           Icon(
                             Icons.circle,
                             size: 8,
-                            color: colors.onErrorContainer.withValues(
-                              alpha: .55,
-                            ),
+                            color: colors.onErrorContainer,
                           ),
                           const SizedBox(width: 5),
                           Text(
                             'AO VIVO',
                             style: TextStyle(
-                              color: colors.onErrorContainer.withValues(
-                                alpha: .72,
-                              ),
+                              color: colors.onErrorContainer,
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 1.1,

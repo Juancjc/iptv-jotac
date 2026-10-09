@@ -226,7 +226,16 @@ class PlaylistRepository {
             ))
         .toList();
 
-    final seriesRows = seriesList
+    // Xtream panels can list the same series under multiple categories,
+    // repeating its series_id. Since that id is the table's primary key,
+    // dedupe before inserting or the batch insert violates the UNIQUE
+    // constraint.
+    final uniqueSeries = <String, XtreamSeries>{};
+    for (final s in seriesList) {
+      uniqueSeries[s.seriesId] = s;
+    }
+
+    final seriesRows = uniqueSeries.values
         .map((s) => SeriesTableCompanion.insert(
               id: s.seriesId,
               playlistId: playlist.id,
