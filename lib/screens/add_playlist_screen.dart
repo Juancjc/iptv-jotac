@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../providers/database_provider.dart';
+import '../services/qr_pairing_server.dart';
 
 class AddPlaylistScreen extends ConsumerStatefulWidget {
   const AddPlaylistScreen({super.key});
@@ -29,7 +33,7 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -101,13 +105,31 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             children: [
               Text('Adicionar lista', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              TabBar(controller: _tabController, tabs: const [Tab(text: 'URL M3U'), Tab(text: 'Xtream Codes')]),
+              TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(text: 'URL M3U'),
+                  Tab(text: 'Xtream Codes'),
+                  Tab(icon: Icon(Icons.qr_code, size: 18), text: 'QR Code'),
+                ],
+              ),
               const SizedBox(height: 16),
               SizedBox(
-                height: 280,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [_buildM3uForm(), _buildXtreamForm()],
+                height: 320,
+                child: AnimatedBuilder(
+                  animation: _tabController,
+                  builder: (context, _) {
+                    switch (_tabController.index) {
+                      case 0:
+                        return _buildM3uForm();
+                      case 1:
+                        return _buildXtreamForm();
+                      default:
+                        return _QrPairingTab(onAdded: () {
+                          if (mounted) Navigator.of(context).pop();
+                        });
+                    }
+                  },
                 ),
               ),
               if (_error != null)
@@ -126,12 +148,15 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
                   const SizedBox(width: 8),
                   AnimatedBuilder(
                     animation: _tabController,
-                    builder: (context, _) => FilledButton(
-                      onPressed: _submitting ? null : (_tabController.index == 0 ? _submitM3u : _submitXtream),
-                      child: _submitting
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Adicionar'),
-                    ),
+                    builder: (context, _) {
+                      if (_tabController.index == 2) return const SizedBox.shrink();
+                      return FilledButton(
+                        onPressed: _submitting ? null : (_tabController.index == 0 ? _submitM3u : _submitXtream),
+                        child: _submitting
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Text('Adicionar'),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -197,6 +222,129 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             obscureText: true,
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe a senha' : null,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows a QR code pointing to a tiny local web form so the playlist can be
+/// typed on a phone instead of with a TV remote. The pairing server is only
+/// alive while this tab is mounted (i.e. while it is the selected tab).
+class _QrPairingTab extends ConsumerStatefulWidget {
+  final VoidCallback onAdded;
+
+  const _QrPairingTab({required this.onAdded});
+
+  @override
+  ConsumerState<_QrPairingTab> createState() => _QrPairingTabState();
+}
+
+class _QrPairingTabState extends ConsumerState<_QrPairingTab> {
+  final _server = QrPairingServer();
+  StreamSubscription<PairingSubmission>? _subscription;
+  Uri? _url;
+  String? _startError;
+  String? _submissionError;
+  bool _processing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    try {
+      final url = await _server.start();
+      _subscription = _server.submissions.listen(_handleSubmission);
+      if (mounted) setState(() => _url = url);
+    } catch (e) {
+      if (mounted) setState(() => _startError = 'Nao foi possivel iniciar o servidor local: $e');
+    }
+  }
+
+  Future<void> _handleSubmission(PairingSubmission submission) async {
+    if (_processing) return;
+    setState(() {
+      _processing = true;
+      _submissionError = null;
+    });
+    try {
+      final repo = ref.read(playlistRepositoryProvider);
+      final playlist = submission.isXtream
+          ? await repo.addXtreamPlaylist(
+              name: submission.name,
+              host: submission.xtreamHost!,
+              username: submission.xtreamUsername!,
+              password: submission.xtreamPassword!,
+            )
+          : await repo.addM3uPlaylist(name: submission.name, url: submission.m3uUrl!);
+      await repo.syncPlaylist(playlist);
+      widget.onAdded();
+    } catch (e) {
+      if (mounted) setState(() => _submissionError = 'Falha ao adicionar a lista recebida: $e');
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _server.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (_startError != null) {
+      return Center(
+        child: Text(_startError!, textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.error)),
+      );
+    }
+
+    final url = _url;
+    if (url == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final link = url.toString();
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Text(
+            'Aponte a camera do celular para o QR code abaixo',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            child: QrImageView(data: link, size: 170, backgroundColor: Colors.white),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Ou acesse pelo navegador do celular:',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+          ),
+          SelectableText(link, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 16),
+          if (_processing)
+            const CircularProgressIndicator()
+          else
+            Text(
+              'Aguardando dados do celular...',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+            ),
+          if (_submissionError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(_submissionError!, textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.error)),
+            ),
         ],
       ),
     );

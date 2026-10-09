@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Compiled Windows installer (regenerate with installer/iptv_jotac.iss)
+/installer/Output/
+
 # Symbolication related
 app.*.symbols
 
