@@ -1,0 +1,111 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/playlist_providers.dart';
+import 'add_playlist_screen.dart';
+import 'downloads_screen.dart';
+import 'home_dashboard_screen.dart';
+import 'live_tv_screen.dart';
+import 'movies_screen.dart';
+import 'series_screen.dart';
+import 'settings_screen.dart';
+
+class HomeShell extends ConsumerStatefulWidget {
+  const HomeShell({super.key});
+
+  @override
+  ConsumerState<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends ConsumerState<HomeShell> {
+  int _index = 0;
+
+  static const _destinations = [
+    NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: Text('Inicio')),
+    NavigationRailDestination(
+        icon: Icon(Icons.live_tv_outlined), selectedIcon: Icon(Icons.live_tv), label: Text('TV ao vivo')),
+    NavigationRailDestination(icon: Icon(Icons.movie_outlined), selectedIcon: Icon(Icons.movie), label: Text('Filmes')),
+    NavigationRailDestination(
+        icon: Icon(Icons.video_library_outlined), selectedIcon: Icon(Icons.video_library), label: Text('Series')),
+    NavigationRailDestination(
+        icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Downloads')),
+    NavigationRailDestination(
+        icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: Text('Configuracoes')),
+  ];
+
+  static const _screens = [
+    HomeDashboardScreen(),
+    LiveTvScreen(),
+    MoviesScreen(),
+    SeriesScreen(),
+    DownloadsScreen(),
+    SettingsScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final playlistsAsync = ref.watch(playlistsProvider);
+    final selectedPlaylistId = ref.watch(selectedPlaylistIdProvider);
+    final showSearch = _index == 1 || _index == 2 || _index == 3;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('IPTV Jotac'),
+        actions: [
+          playlistsAsync.when(
+            data: (playlists) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: DropdownButton<String?>(
+                value: selectedPlaylistId,
+                hint: const Text('Todas as listas'),
+                underline: const SizedBox.shrink(),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('Todas as listas')),
+                  for (final playlist in playlists) DropdownMenuItem<String?>(value: playlist.id, child: Text(playlist.name)),
+                ],
+                onChanged: (value) => ref.read(selectedPlaylistIdProvider.notifier).state = value,
+              ),
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Adicionar lista',
+            onPressed: () => showDialog<void>(context: context, builder: (_) => const AddPlaylistScreen()),
+          ),
+          const SizedBox(width: 8),
+        ],
+        bottom: showSearch
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(56),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Buscar...',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onChanged: (value) => ref.read(searchQueryProvider.notifier).state = value,
+                  ),
+                ),
+              )
+            : null,
+      ),
+      body: Row(
+        children: [
+          NavigationRail(
+            selectedIndex: _index,
+            onDestinationSelected: (i) => setState(() => _index = i),
+            labelType: NavigationRailLabelType.all,
+            destinations: _destinations,
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(child: _screens[_index]),
+        ],
+      ),
+    );
+  }
+}
