@@ -20,7 +20,10 @@ class SettingsScreen extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Listas cadastradas', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Listas cadastradas',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         playlistsAsync.when(
           data: (playlists) {
@@ -32,7 +35,11 @@ class SettingsScreen extends ConsumerWidget {
             }
             return Column(
               children: [
-                for (final playlist in playlists) _PlaylistTile(playlist: playlist, syncing: syncingIds.contains(playlist.id)),
+                for (final playlist in playlists)
+                  _PlaylistTile(
+                    playlist: playlist,
+                    syncing: syncingIds.contains(playlist.id),
+                  ),
               ],
             );
           },
@@ -43,12 +50,22 @@ class SettingsScreen extends ConsumerWidget {
         Text('Aparencia', style: Theme.of(context).textTheme.titleMedium),
         RadioGroup<ThemeMode>(
           groupValue: themeMode,
-          onChanged: (value) => ref.read(themeModeProvider.notifier).state = value!,
+          onChanged: (value) =>
+              ref.read(themeModeProvider.notifier).state = value!,
           child: const Column(
             children: [
-              RadioListTile<ThemeMode>(title: Text('Escuro'), value: ThemeMode.dark),
-              RadioListTile<ThemeMode>(title: Text('Claro'), value: ThemeMode.light),
-              RadioListTile<ThemeMode>(title: Text('Seguir o sistema'), value: ThemeMode.system),
+              RadioListTile<ThemeMode>(
+                title: Text('Escuro'),
+                value: ThemeMode.dark,
+              ),
+              RadioListTile<ThemeMode>(
+                title: Text('Claro'),
+                value: ThemeMode.light,
+              ),
+              RadioListTile<ThemeMode>(
+                title: Text('Seguir o sistema'),
+                value: ThemeMode.system,
+              ),
             ],
           ),
         ),
@@ -62,7 +79,9 @@ class SettingsScreen extends ConsumerWidget {
             max: 5,
             divisions: 4,
             label: '$maxConcurrent',
-            onChanged: (value) => ref.read(maxConcurrentDownloadsProvider.notifier).state = value.round(),
+            onChanged: (value) =>
+                ref.read(maxConcurrentDownloadsProvider.notifier).state = value
+                    .round(),
           ),
           trailing: Text('$maxConcurrent'),
         ),
@@ -88,15 +107,24 @@ class _PlaylistTile extends ConsumerWidget {
             if (playlist.isInsecure) const InsecureConnectionBanner(),
             Row(
               children: [
-                Icon(playlist.type == PlaylistType.m3u ? Icons.link : Icons.dns_outlined),
+                Icon(
+                  playlist.type == PlaylistType.m3u
+                      ? Icons.link
+                      : Icons.dns_outlined,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(playlist.name, style: Theme.of(context).textTheme.titleSmall),
                       Text(
-                        playlist.type == PlaylistType.m3u ? playlist.m3uUrl ?? '' : playlist.xtreamHost ?? '',
+                        playlist.name,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      Text(
+                        playlist.type == PlaylistType.m3u
+                            ? playlist.m3uUrl ?? ''
+                            : playlist.xtreamHost ?? '',
                         style: Theme.of(context).textTheme.bodySmall,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -111,17 +139,23 @@ class _PlaylistTile extends ConsumerWidget {
                 if (syncing)
                   const Padding(
                     padding: EdgeInsets.all(8),
-                    child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   )
                 else
                   IconButton(
                     icon: const Icon(Icons.refresh),
                     tooltip: 'Atualizar lista',
-                    onPressed: () => ref.read(playlistSyncControllerProvider).sync(playlist),
+                    onPressed: () =>
+                        ref.read(playlistSyncControllerProvider).sync(playlist),
                   ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Remover lista',
+                  color: Theme.of(context).colorScheme.error,
+                  tooltip: 'Excluir lista',
                   onPressed: () => _confirmRemove(context, ref),
                 ),
               ],
@@ -136,16 +170,39 @@ class _PlaylistTile extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remover lista'),
-        content: Text('Remover "${playlist.name}" e todo o conteudo associado a ela?'),
+        icon: Icon(
+          Icons.delete_forever_outlined,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        title: const Text('Excluir lista?'),
+        content: Text(
+          'A lista "${playlist.name}" e todo o conteudo associado serao excluidos deste dispositivo.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remover')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Excluir'),
+          ),
         ],
       ),
     );
     if (confirmed == true) {
+      if (ref.read(selectedPlaylistIdProvider) == playlist.id) {
+        ref.read(selectedPlaylistIdProvider.notifier).state = null;
+      }
       await ref.read(playlistRepositoryProvider).removePlaylist(playlist.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lista "${playlist.name}" excluida')),
+        );
+      }
     }
   }
 }

@@ -21,32 +21,56 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
 
   static const _destinations = [
-    NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: Text('Inicio')),
     NavigationRailDestination(
-        icon: Icon(Icons.live_tv_outlined), selectedIcon: Icon(Icons.live_tv), label: Text('TV ao vivo')),
-    NavigationRailDestination(icon: Icon(Icons.movie_outlined), selectedIcon: Icon(Icons.movie), label: Text('Filmes')),
+      icon: Icon(Icons.home_outlined),
+      selectedIcon: Icon(Icons.home),
+      label: Text('Inicio'),
+    ),
     NavigationRailDestination(
-        icon: Icon(Icons.video_library_outlined), selectedIcon: Icon(Icons.video_library), label: Text('Series')),
+      icon: Icon(Icons.live_tv_outlined),
+      selectedIcon: Icon(Icons.live_tv),
+      label: Text('TV ao vivo'),
+    ),
     NavigationRailDestination(
-        icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Downloads')),
+      icon: Icon(Icons.movie_outlined),
+      selectedIcon: Icon(Icons.movie),
+      label: Text('Filmes'),
+    ),
     NavigationRailDestination(
-        icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: Text('Configuracoes')),
-  ];
-
-  static const _screens = [
-    HomeDashboardScreen(),
-    LiveTvScreen(),
-    MoviesScreen(),
-    SeriesScreen(),
-    DownloadsScreen(),
-    SettingsScreen(),
+      icon: Icon(Icons.video_library_outlined),
+      selectedIcon: Icon(Icons.video_library),
+      label: Text('Series'),
+    ),
+    NavigationRailDestination(
+      icon: Icon(Icons.download_outlined),
+      selectedIcon: Icon(Icons.download),
+      label: Text('Downloads'),
+    ),
+    NavigationRailDestination(
+      icon: Icon(Icons.settings_outlined),
+      selectedIcon: Icon(Icons.settings),
+      label: Text('Configuracoes'),
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
     final playlistsAsync = ref.watch(playlistsProvider);
     final selectedPlaylistId = ref.watch(selectedPlaylistIdProvider);
-    final showSearch = _index == 1 || _index == 2 || _index == 3;
+    final screens = [
+      HomeDashboardScreen(onSectionSelected: _selectSection),
+      const LiveTvScreen(),
+      MoviesScreen(
+        onShowMovies: () => _selectSection(2),
+        onShowSeries: () => _selectSection(3),
+      ),
+      SeriesScreen(
+        onShowMovies: () => _selectSection(2),
+        onShowSeries: () => _selectSection(3),
+      ),
+      const DownloadsScreen(),
+      const SettingsScreen(),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -60,10 +84,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 hint: const Text('Todas as listas'),
                 underline: const SizedBox.shrink(),
                 items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('Todas as listas')),
-                  for (final playlist in playlists) DropdownMenuItem<String?>(value: playlist.id, child: Text(playlist.name)),
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Todas as listas'),
+                  ),
+                  for (final playlist in playlists)
+                    DropdownMenuItem<String?>(
+                      value: playlist.id,
+                      child: Text(playlist.name),
+                    ),
                 ],
-                onChanged: (value) => ref.read(selectedPlaylistIdProvider.notifier).state = value,
+                onChanged: (value) =>
+                    ref.read(selectedPlaylistIdProvider.notifier).state = value,
               ),
             ),
             loading: () => const SizedBox.shrink(),
@@ -72,40 +104,40 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'Adicionar lista',
-            onPressed: () => showDialog<void>(context: context, builder: (_) => const AddPlaylistScreen()),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const AddPlaylistScreen(),
+            ),
           ),
           const SizedBox(width: 8),
         ],
-        bottom: showSearch
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(56),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Buscar...',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: (value) => ref.read(searchQueryProvider.notifier).state = value,
-                  ),
-                ),
-              )
-            : null,
       ),
       body: Row(
         children: [
           NavigationRail(
             selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
+            onDestinationSelected: _selectSection,
             labelType: NavigationRailLabelType.all,
             destinations: _destinations,
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: _screens[_index]),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: KeyedSubtree(
+                key: ValueKey(_index),
+                child: screens[_index],
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  void _selectSection(int index) {
+    if (_index == index) return;
+    ref.read(searchQueryProvider.notifier).state = '';
+    setState(() => _index = index);
   }
 }

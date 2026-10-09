@@ -15,6 +15,26 @@ final selectedPlaylistIdProvider = StateProvider<String?>((ref) => null);
 
 final searchQueryProvider = StateProvider<String>((ref) => '');
 
+/// Unfiltered content streams used by the dashboard counters and by screens
+/// that implement their own local search/category filters.
+final allChannelsProvider = StreamProvider<List<Channel>>((ref) {
+  final repo = ref.watch(playlistRepositoryProvider);
+  final playlistId = ref.watch(selectedPlaylistIdProvider);
+  return repo.watchChannels(playlistId: playlistId);
+});
+
+final allMoviesProvider = StreamProvider<List<Movie>>((ref) {
+  final repo = ref.watch(playlistRepositoryProvider);
+  final playlistId = ref.watch(selectedPlaylistIdProvider);
+  return repo.watchMovies(playlistId: playlistId);
+});
+
+final allSeriesProvider = StreamProvider<List<domain.Series>>((ref) {
+  final repo = ref.watch(playlistRepositoryProvider);
+  final playlistId = ref.watch(selectedPlaylistIdProvider);
+  return repo.watchSeries(playlistId: playlistId);
+});
+
 final channelsProvider = StreamProvider<List<Channel>>((ref) {
   final repo = ref.watch(playlistRepositoryProvider);
   final playlistId = ref.watch(selectedPlaylistIdProvider);
@@ -54,7 +74,8 @@ class PlaylistSyncController {
     try {
       await _ref.read(playlistRepositoryProvider).syncPlaylist(playlist);
     } finally {
-      final updated = {..._ref.read(syncingPlaylistIdsProvider)}..remove(playlist.id);
+      final updated = {..._ref.read(syncingPlaylistIdsProvider)}
+        ..remove(playlist.id);
       notifier.state = updated;
     }
   }
