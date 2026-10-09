@@ -90,14 +90,23 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _PlaylistTile extends ConsumerWidget {
+class _PlaylistTile extends ConsumerStatefulWidget {
   final Playlist playlist;
   final bool syncing;
 
   const _PlaylistTile({required this.playlist, required this.syncing});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PlaylistTile> createState() => _PlaylistTileState();
+}
+
+class _PlaylistTileState extends ConsumerState<_PlaylistTile> {
+  bool _deleting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final playlist = widget.playlist;
+    final busy = widget.syncing || _deleting;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -136,7 +145,7 @@ class _PlaylistTile extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (syncing)
+                if (busy)
                   const Padding(
                     padding: EdgeInsets.all(8),
                     child: SizedBox(
@@ -156,7 +165,7 @@ class _PlaylistTile extends ConsumerWidget {
                   icon: const Icon(Icons.delete_outline),
                   color: Theme.of(context).colorScheme.error,
                   tooltip: 'Excluir lista',
-                  onPressed: () => _confirmRemove(context, ref),
+                  onPressed: busy ? null : _confirmRemove,
                 ),
               ],
             ),
@@ -166,7 +175,8 @@ class _PlaylistTile extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmRemove(BuildContext context, WidgetRef ref) async {
+  Future<void> _confirmRemove() async {
+    final playlist = widget.playlist;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -193,16 +203,28 @@ class _PlaylistTile extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed == true) {
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deleting = true);
+    try {
+      await ref.read(playlistRepositoryProvider).removePlaylist(playlist.id);
       if (ref.read(selectedPlaylistIdProvider) == playlist.id) {
         ref.read(selectedPlaylistIdProvider.notifier).state = null;
       }
-      await ref.read(playlistRepositoryProvider).removePlaylist(playlist.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lista "${playlist.name}" excluida')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lista "${playlist.name}" excluida')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Nao foi possivel excluir a lista: $error'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _deleting = false);
     }
   }
 }

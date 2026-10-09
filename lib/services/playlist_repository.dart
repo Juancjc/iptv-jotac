@@ -79,13 +79,23 @@ class PlaylistRepository {
     await _db.transaction(() async {
       await (_db.delete(_db.channels)..where((t) => t.playlistId.equals(playlistId))).go();
       await (_db.delete(_db.movies)..where((t) => t.playlistId.equals(playlistId))).go();
-      final seriesRows = await (_db.select(_db.seriesTable)..where((t) => t.playlistId.equals(playlistId))).get();
-      for (final series in seriesRows) {
-        await (_db.delete(_db.episodes)..where((t) => t.seriesId.equals(series.id))).go();
-      }
-      await (_db.delete(_db.seriesTable)..where((t) => t.playlistId.equals(playlistId))).go();
+      await _deleteSeriesContentForPlaylist(playlistId);
       await (_db.delete(_db.playlists)..where((t) => t.id.equals(playlistId))).go();
     });
+  }
+
+  /// Deletes every episode for a playlist with one SQL statement. Large M3U
+  /// lists can contain hundreds of thousands of episodes, so deleting once per
+  /// series makes the UI appear frozen for several minutes.
+  Future<void> _deleteSeriesContentForPlaylist(String playlistId) async {
+    await _db.customStatement(
+      'DELETE FROM episodes '
+      'WHERE series_id IN ('
+      'SELECT id FROM series_table WHERE playlist_id = ?'
+      ')',
+      [playlistId],
+    );
+    await (_db.delete(_db.seriesTable)..where((t) => t.playlistId.equals(playlistId))).go();
   }
 
   XtreamApiClient _clientFor(Playlist playlist) {
@@ -174,11 +184,7 @@ class PlaylistRepository {
     await _db.transaction(() async {
       await (_db.delete(_db.channels)..where((t) => t.playlistId.equals(playlist.id))).go();
       await (_db.delete(_db.movies)..where((t) => t.playlistId.equals(playlist.id))).go();
-      final oldSeries = await (_db.select(_db.seriesTable)..where((t) => t.playlistId.equals(playlist.id))).get();
-      for (final series in oldSeries) {
-        await (_db.delete(_db.episodes)..where((t) => t.seriesId.equals(series.id))).go();
-      }
-      await (_db.delete(_db.seriesTable)..where((t) => t.playlistId.equals(playlist.id))).go();
+      await _deleteSeriesContentForPlaylist(playlist.id);
 
       await _db.batch((batch) {
         batch.insertAll(_db.channels, channelRows);
@@ -233,11 +239,7 @@ class PlaylistRepository {
     await _db.transaction(() async {
       await (_db.delete(_db.channels)..where((t) => t.playlistId.equals(playlist.id))).go();
       await (_db.delete(_db.movies)..where((t) => t.playlistId.equals(playlist.id))).go();
-      final oldSeries = await (_db.select(_db.seriesTable)..where((t) => t.playlistId.equals(playlist.id))).get();
-      for (final series in oldSeries) {
-        await (_db.delete(_db.episodes)..where((t) => t.seriesId.equals(series.id))).go();
-      }
-      await (_db.delete(_db.seriesTable)..where((t) => t.playlistId.equals(playlist.id))).go();
+      await _deleteSeriesContentForPlaylist(playlist.id);
 
       await _db.batch((batch) {
         batch.insertAll(_db.channels, channelRows);
