@@ -9,7 +9,7 @@ import 'package:iptv_jotac/providers/watch_history_providers.dart';
 import 'package:iptv_jotac/screens/favorites_screen.dart';
 
 void main() {
-  testWidgets('shows favorite movies, favorite series and saved playback position', (tester) async {
+  testWidgets('shows favorite movies and series without regular titles', (tester) async {
     const favoriteMovie = Movie(
       id: 'movie-favorite',
       playlistId: 'playlist',
@@ -31,10 +31,10 @@ void main() {
     );
     final history = WatchHistoryEntry(
       id: 'history',
-      contentId: 'episode-4',
-      contentType: WatchableType.episode,
-      title: 'Serie exemplo - S1E4',
-      streamUrl: 'https://example.com/episode-4.mp4',
+      contentId: 'movie-favorite',
+      contentType: WatchableType.movie,
+      title: 'Filme favorito',
+      streamUrl: 'https://example.com/favorite.mp4',
       positionSeconds: 2535,
       durationSeconds: 6000,
       lastWatchedAt: DateTime(2026, 10, 12),
@@ -52,8 +52,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Ultimos assistidos'), findsOneWidget);
-    expect(find.text('Serie exemplo - S1E4'), findsOneWidget);
+    expect(find.text('Ultimos assistidos'), findsNothing);
     expect(find.text('Parou em 42:15 de 1:40:00'), findsOneWidget);
     expect(find.text('Filme favorito'), findsOneWidget);
     expect(find.text('Filme comum'), findsNothing);

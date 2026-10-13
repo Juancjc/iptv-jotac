@@ -10,6 +10,7 @@ import 'live_tv_screen.dart';
 import 'movies_screen.dart';
 import 'series_screen.dart';
 import 'settings_screen.dart';
+import 'watch_history_screen.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
@@ -40,6 +41,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       label: Text('Favoritos'),
     ),
     NavigationRailDestination(
+      icon: Icon(Icons.history_outlined),
+      selectedIcon: Icon(Icons.history),
+      label: Text('Assistidos'),
+    ),
+    NavigationRailDestination(
       icon: Icon(Icons.download_outlined),
       selectedIcon: Icon(Icons.download),
       label: Text('Downloads'),
@@ -61,6 +67,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       MoviesScreen(onShowMovies: () => _selectSection(2), onShowSeries: () => _selectSection(3)),
       SeriesScreen(onShowMovies: () => _selectSection(2), onShowSeries: () => _selectSection(3)),
       const FavoritesScreen(),
+      const WatchHistoryScreen(),
       const DownloadsScreen(),
       const SettingsScreen(),
     ];

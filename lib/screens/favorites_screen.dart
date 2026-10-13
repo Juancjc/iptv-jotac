@@ -11,7 +11,7 @@ import '../widgets/content_card.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
 
-/// Brings together saved titles and resumable VOD playback in one place.
+/// Brings together the movies and series saved by the viewer.
 class FavoritesScreen extends ConsumerWidget {
   const FavoritesScreen({super.key});
 
@@ -28,7 +28,6 @@ class FavoritesScreen extends ConsumerWidget {
     final vodHistory = (historyAsync.valueOrNull ?? const <WatchHistoryEntry>[])
         .where((entry) => entry.contentType != WatchableType.channel && entry.positionSeconds > 0)
         .toList();
-    final recent = vodHistory.take(12).toList();
     final historyByContentId = <String, WatchHistoryEntry>{for (final entry in vodHistory) entry.contentId: entry};
     final historyByStreamUrl = <String, WatchHistoryEntry>{for (final entry in vodHistory) entry.streamUrl: entry};
 
@@ -38,28 +37,10 @@ class FavoritesScreen extends ConsumerWidget {
         Text('Favoritos', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
         Text(
-          'Seus filmes e series salvos e o ponto onde voce parou.',
+          'Seus filmes e series salvos em um so lugar.',
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 28),
-        _ContentSection(
-          icon: Icons.play_circle_outline,
-          title: 'Ultimos assistidos',
-          emptyMessage: 'Comece a assistir a um filme ou episodio para ele aparecer aqui.',
-          isLoading: historyAsync.isLoading && !historyAsync.hasValue,
-          error: historyAsync.error,
-          children: [
-            for (final entry in recent)
-              ContentCard(
-                title: entry.title,
-                imageUrl: entry.posterUrl,
-                subtitle: _progressLabel(entry),
-                progress: _progress(entry),
-                onTap: () => _openHistoryEntry(context, entry),
-              ),
-          ],
-        ),
-        const SizedBox(height: 32),
         _ContentSection(
           icon: Icons.movie_outlined,
           title: 'Filmes favoritos',
@@ -112,21 +93,6 @@ class FavoritesScreen extends ConsumerWidget {
           contentType: WatchableType.movie,
           posterUrl: movie.posterUrl,
           startPositionSeconds: history == null ? 0 : _resumePosition(history),
-        ),
-      ),
-    );
-  }
-
-  static void _openHistoryEntry(BuildContext context, WatchHistoryEntry entry) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PlayerScreen(
-          title: entry.title,
-          streamUrl: entry.streamUrl,
-          contentId: entry.contentId,
-          contentType: entry.contentType,
-          posterUrl: entry.posterUrl,
-          startPositionSeconds: _resumePosition(entry),
         ),
       ),
     );
