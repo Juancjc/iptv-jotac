@@ -12,6 +12,13 @@ Set-Location $RepoRoot
 $AppId = "{8F2B6B8E-6B9B-4B0E-9B8E-7B6C2E7B6B8E}"
 $IssPath = Join-Path $RepoRoot "installer\iptv_jotac.iss"
 $SetupExe = Join-Path $RepoRoot "installer\Output\IPTV_Jotac_Setup.exe"
+$PubspecPath = Join-Path $RepoRoot "pubspec.yaml"
+
+function Get-AppVersion {
+    $line = Select-String -Path $PubspecPath -Pattern '^version:\s*(\S+)' | Select-Object -First 1
+    if (-not $line) { throw "Nao encontrei a linha 'version:' em $PubspecPath." }
+    return ($line.Matches[0].Groups[1].Value -split '\+')[0]
+}
 
 function Find-Iscc {
     $candidates = @(
@@ -81,8 +88,11 @@ if ($uninstallString) {
     Write-Host "Nenhuma instalacao anterior encontrada." -ForegroundColor Green
 }
 
+$version = Get-AppVersion
+Write-Host "==> Versao detectada (pubspec.yaml): $version" -ForegroundColor Cyan
+
 Write-Host "==> Compilando instalador com Inno Setup..." -ForegroundColor Cyan
-& $iscc $IssPath
+& $iscc "/DMyAppVersion=$version" $IssPath
 if ($LASTEXITCODE -ne 0) { throw "ISCC.exe falhou (codigo $LASTEXITCODE)." }
 
 if (-not (Test-Path $SetupExe)) {

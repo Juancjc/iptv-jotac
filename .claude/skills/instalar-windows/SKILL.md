@@ -43,8 +43,11 @@ powershell -ExecutionPolicy Bypass -File .claude\skills\instalar-windows\scripts
    no registro do Windows (`HKLM`/`HKCU`, 32 e 64 bits). Se encontrar, chama o
    `unins000.exe` dela em modo silencioso antes de prosseguir — assim a nova
    instalacao nao fica duplicada nem mistura arquivos de versoes diferentes.
-4. Compila `installer\iptv_jotac.iss` com `ISCC.exe`, gerando
-   `installer\Output\IPTV_Jotac_Setup.exe`.
+4. Le a versao em `pubspec.yaml` e compila `installer\iptv_jotac.iss` com
+   `ISCC.exe /DMyAppVersion=<versao>`, gerando
+   `installer\Output\IPTV_Jotac_Setup.exe` ja com a versao certa (o `.iss`
+   nao tem versao hardcoded; `pubspec.yaml` e a unica fonte de verdade,
+   igual na skill `gerar-apk`).
 5. Executa o instalador novo (silencioso ou interativo conforme `-Silent`).
 
 ## Observacoes

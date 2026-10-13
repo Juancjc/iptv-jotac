@@ -6,7 +6,12 @@
 ; The resulting setup .exe is written to installer\Output\.
 
 #define MyAppName "IPTV Jotac"
-#define MyAppVersion "1.0.0"
+; MyAppVersion normalmente vem de fora via "ISCC.exe /DMyAppVersion=X.Y.Z ..."
+; (o install.ps1 le isso do pubspec.yaml). O valor abaixo so e usado se o
+; script for compilado manualmente sem passar o /D.
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "Jotac"
 #define MyAppExeName "iptv_jotac.exe"
 #define MyReleaseDir "..\build\windows\x64\runner\Release"

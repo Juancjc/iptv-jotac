@@ -25,11 +25,30 @@ Parametros uteis:
   (ou o universal, mais simples).
 - `-SkipBuild`: pula o `flutter build apk --release` e so copia o APK que ja
   existe em `build\app\outputs\flutter-apk\` para Downloads.
+- `-NoBump`: nao incrementa a versao em `pubspec.yaml`; gera o APK com a
+  versao que ja estiver la. Use para re-gerar o mesmo release (ex.: so
+  mudou configuracao de build, nao o app).
+- `-BumpMinor` / `-BumpMajor`: em vez do bump de patch padrao, incrementa
+  MINOR ou MAJOR (zerando os campos a direita) para uma mudanca maior de
+  verdade (nova funcionalidade grande / breaking change).
+
+## Versionamento (padronizado)
+
+`pubspec.yaml` e a **unica fonte de verdade** da versao: `version: X.Y.Z+N`.
+`android/app/build.gradle.kts` le `flutter.versionName`/`flutter.versionCode`
+direto dai — nunca tem versao hardcoded ali. Por convencao deste projeto,
+o numero de build (`+N`) sempre acompanha o PATCH (`Z`), entao uma versao
+tipica e `1.0.3+3`, nunca `1.0.0+3`.
+
+Por padrao, toda execucao desta skill incrementa PATCH e BUILD em 1 antes
+de buildar (ex.: `1.0.3+3` -> `1.0.4+4`). Use `-NoBump` se so quer re-gerar
+o APK da versao atual sem avancar.
 
 ## O que o script faz
 
-1. Roda `flutter build apk --release` (a menos que `-SkipBuild`).
-2. Le a versao em `pubspec.yaml` (`version: X.Y.Z+N`).
+1. Le a versao atual em `pubspec.yaml` e aplica o bump (patch por padrao,
+   ou nenhum/minor/major conforme as flags) escrevendo de volta no arquivo.
+2. Roda `flutter build apk --release` (a menos que `-SkipBuild`).
 3. Copia o(s) `.apk` gerado(s) de `build\app\outputs\flutter-apk\` para
    `%USERPROFILE%\Downloads\`, renomeando para `IPTV_Jotac_<versao>.apk`
    (ou `IPTV_Jotac_<versao>_<abi>.apk` com `-SplitPerAbi`).
@@ -41,3 +60,5 @@ Parametros uteis:
   propria configurada) — normal para instalar via sideload em uso pessoal.
 - Para instalar no aparelho depois de gerado, veja a secao "Instalacao no
   Android / Fire TV" do `README.md`.
+- O bump de versao em `pubspec.yaml` fica como alteracao local; se quiser
+  manter o historico, faca commit dele junto com o codigo que gerou o release.
