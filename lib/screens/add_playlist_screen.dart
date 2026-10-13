@@ -175,12 +175,16 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
           TextFormField(
             controller: _m3uNameController,
             decoration: const InputDecoration(labelText: 'Nome da lista'),
+            autofocus: true,
+            textInputAction: TextInputAction.next,
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _m3uUrlController,
             decoration: const InputDecoration(labelText: 'URL do M3U/M3U8'),
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _submitM3u(),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Informe a URL';
               final uri = Uri.tryParse(v.trim());
@@ -201,18 +205,22 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
           TextFormField(
             controller: _xtreamNameController,
             decoration: const InputDecoration(labelText: 'Nome da lista'),
+            autofocus: true,
+            textInputAction: TextInputAction.next,
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _xtreamHostController,
             decoration: const InputDecoration(labelText: 'Host (http(s)://host:porta)'),
+            textInputAction: TextInputAction.next,
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o host' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _xtreamUserController,
             decoration: const InputDecoration(labelText: 'Usuario'),
+            textInputAction: TextInputAction.next,
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o usuario' : null,
           ),
           const SizedBox(height: 12),
@@ -220,6 +228,8 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             controller: _xtreamPassController,
             decoration: const InputDecoration(labelText: 'Senha'),
             obscureText: true,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _submitXtream(),
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe a senha' : null,
           ),
         ],

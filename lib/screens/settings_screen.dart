@@ -38,10 +38,11 @@ class SettingsScreen extends ConsumerWidget {
             }
             return Column(
               children: [
-                for (final playlist in playlists)
+                for (final (index, playlist) in playlists.indexed)
                   _PlaylistTile(
                     playlist: playlist,
                     syncing: syncingIds.contains(playlist.id),
+                    autofocusRefresh: index == 0,
                   ),
               ],
             );
@@ -208,8 +209,13 @@ class _SubtitlePreview extends StatelessWidget {
 class _PlaylistTile extends ConsumerStatefulWidget {
   final Playlist playlist;
   final bool syncing;
+  final bool autofocusRefresh;
 
-  const _PlaylistTile({required this.playlist, required this.syncing});
+  const _PlaylistTile({
+    required this.playlist,
+    required this.syncing,
+    this.autofocusRefresh = false,
+  });
 
   @override
   ConsumerState<_PlaylistTile> createState() => _PlaylistTileState();
@@ -273,6 +279,7 @@ class _PlaylistTileState extends ConsumerState<_PlaylistTile> {
                   IconButton(
                     icon: const Icon(Icons.refresh),
                     tooltip: 'Atualizar lista',
+                    autofocus: widget.autofocusRefresh,
                     onPressed: () =>
                         ref.read(playlistSyncControllerProvider).sync(playlist),
                   ),

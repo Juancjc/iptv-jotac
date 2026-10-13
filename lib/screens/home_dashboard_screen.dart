@@ -35,6 +35,7 @@ class HomeDashboardScreen extends ConsumerWidget {
                     plural: 'Canais',
                   ),
                   liveBadge: true,
+                  autofocus: true,
                   onTap: () => onSectionSelected(1),
                 ),
                 _HomeSectionCard(
@@ -86,6 +87,7 @@ class _HomeSectionCard extends StatefulWidget {
   final String title;
   final String countLabel;
   final bool liveBadge;
+  final bool autofocus;
   final VoidCallback onTap;
 
   const _HomeSectionCard({
@@ -95,6 +97,7 @@ class _HomeSectionCard extends StatefulWidget {
     required this.countLabel,
     required this.onTap,
     this.liveBadge = false,
+    this.autofocus = false,
   });
 
   @override
@@ -103,10 +106,12 @@ class _HomeSectionCard extends StatefulWidget {
 
 class _HomeSectionCardState extends State<_HomeSectionCard> {
   bool _hovered = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final highlighted = _hovered || _focused;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -114,18 +119,19 @@ class _HomeSectionCardState extends State<_HomeSectionCard> {
         duration: const Duration(milliseconds: 160),
         width: 220,
         height: 200,
-        transform: Matrix4.translationValues(0, _hovered ? -4 : 0, 0),
+        transform: Matrix4.translationValues(0, highlighted ? -4 : 0, 0),
         decoration: BoxDecoration(
-          color: _hovered
+          color: highlighted
               ? colors.surfaceContainerHigh
               : colors.surfaceContainer,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: _hovered
+            color: highlighted
                 ? colors.primary.withValues(alpha: .7)
                 : colors.outlineVariant,
+            width: _focused ? 2 : 1,
           ),
-          boxShadow: _hovered
+          boxShadow: highlighted
               ? [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: .28),
@@ -140,6 +146,8 @@ class _HomeSectionCardState extends State<_HomeSectionCard> {
           borderRadius: BorderRadius.circular(20),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
+            autofocus: widget.autofocus,
+            onFocusChange: (value) => setState(() => _focused = value),
             onTap: widget.onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
