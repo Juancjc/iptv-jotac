@@ -38,7 +38,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   late final WatchHistoryRepository _historyRepo;
   Timer? _progressTimer;
   Duration _lastKnownDuration = Duration.zero;
+  StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<Tracks>? _tracksSubscription;
+  bool _resumeApplied = false;
 
   bool _readyToWatch = false;
   Tracks? _tracks;
@@ -53,12 +55,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _controller = VideoController(_player);
 
     _player.open(Media(widget.streamUrl), play: false);
-    if (widget.startPositionSeconds > 0) {
-      _player.stream.duration.first.then((_) {
-        _player.seek(Duration(seconds: widget.startPositionSeconds));
-      });
-    }
-    _player.stream.duration.listen((duration) => _lastKnownDuration = duration);
+    _durationSubscription = _player.stream.duration.listen((duration) {
+      _lastKnownDuration = duration;
+      if (!_resumeApplied && widget.startPositionSeconds > 0 && duration > Duration.zero) {
+        _resumeApplied = true;
+        unawaited(_player.seek(Duration(seconds: widget.startPositionSeconds)));
+      }
+    });
     _tracksSubscription = _player.stream.tracks.listen((tracks) {
       if (mounted) setState(() => _tracks = tracks);
     });
@@ -90,6 +93,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void dispose() {
     _progressTimer?.cancel();
+    _durationSubscription?.cancel();
     _tracksSubscription?.cancel();
     unawaited(_saveProgress());
     _player.dispose();
@@ -104,11 +108,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(widget.title),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: Text(widget.title), backgroundColor: Colors.black, foregroundColor: Colors.white),
       body: Stack(
         children: [
           Center(
@@ -132,6 +132,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               tracks: _tracks,
               selectedAudio: _selectedAudio,
               selectedSubtitle: _selectedSubtitle,
+              startPositionSeconds: widget.startPositionSeconds,
               onAudioChanged: (track) => setState(() => _selectedAudio = track),
               onSubtitleChanged: (track) => setState(() => _selectedSubtitle = track),
               onWatch: _startWatching,
@@ -152,6 +153,7 @@ class _PrePlaybackOverlay extends StatelessWidget {
   final Tracks? tracks;
   final AudioTrack selectedAudio;
   final SubtitleTrack selectedSubtitle;
+  final int startPositionSeconds;
   final ValueChanged<AudioTrack> onAudioChanged;
   final ValueChanged<SubtitleTrack> onSubtitleChanged;
   final VoidCallback onWatch;
@@ -162,6 +164,7 @@ class _PrePlaybackOverlay extends StatelessWidget {
     required this.tracks,
     required this.selectedAudio,
     required this.selectedSubtitle,
+    required this.startPositionSeconds,
     required this.onAudioChanged,
     required this.onSubtitleChanged,
     required this.onWatch,
@@ -194,7 +197,11 @@ class _PrePlaybackOverlay extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (poster != null && poster.isNotEmpty)
-            Image.network(poster, fit: BoxFit.cover, errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black)),
+            Image.network(
+              poster,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black),
+            ),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -215,10 +222,9 @@ class _PrePlaybackOverlay extends StatelessWidget {
                     Text(
                       title,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineSmall
-                          ?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 24),
                     if (showAudioPicker)
@@ -247,7 +253,11 @@ class _PrePlaybackOverlay extends StatelessWidget {
                         autofocus: true,
                         onPressed: onWatch,
                         icon: const Icon(Icons.play_arrow),
-                        label: const Text('Assistir'),
+                        label: Text(
+                          startPositionSeconds > 0
+                              ? 'Continuar de ${_formatPlaybackTime(startPositionSeconds)}'
+                              : 'Assistir',
+                        ),
                         style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                       ),
                     ),
@@ -260,6 +270,14 @@ class _PrePlaybackOverlay extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatPlaybackTime(int totalSeconds) {
+  final duration = Duration(seconds: totalSeconds);
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
 }
 
 class _OptionDropdown<T> extends StatelessWidget {
@@ -293,29 +311,31 @@ class _OptionDropdown<T> extends StatelessWidget {
           value: containsValue ? value : null,
           isExpanded: true,
           dropdownColor: const Color(0xFF1C181D),
-          icon: const Padding(padding: EdgeInsets.only(right: 12), child: Icon(Icons.arrow_drop_down, color: Colors.white)),
+          icon: const Padding(
+            padding: EdgeInsets.only(right: 12),
+            child: Icon(Icons.arrow_drop_down, color: Colors.white),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           selectedItemBuilder: (context) => items
-              .map((item) => Row(
-                    children: [
-                      Icon(icon, size: 18, color: Colors.white70),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '$label: ${itemLabel(item, items.indexOf(item))}',
-                          style: const TextStyle(color: Colors.white),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+              .map(
+                (item) => Row(
+                  children: [
+                    Icon(icon, size: 18, color: Colors.white70),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '$label: ${itemLabel(item, items.indexOf(item))}',
+                        style: const TextStyle(color: Colors.white),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                  ))
+                    ),
+                  ],
+                ),
+              )
               .toList(),
           items: [
             for (var i = 0; i < items.length; i++)
-              DropdownMenuItem<T>(
-                value: items[i],
-                child: Text(itemLabel(items[i], i)),
-              ),
+              DropdownMenuItem<T>(value: items[i], child: Text(itemLabel(items[i], i))),
           ],
           onChanged: (item) {
             if (item != null) onChanged(item);

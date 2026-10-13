@@ -5,6 +5,7 @@ class ContentCard extends StatelessWidget {
   final String title;
   final String? imageUrl;
   final String? subtitle;
+  final double? progress;
   final bool isFavorite;
   final VoidCallback onTap;
   final VoidCallback? onToggleFavorite;
@@ -16,6 +17,7 @@ class ContentCard extends StatelessWidget {
     required this.onTap,
     this.imageUrl,
     this.subtitle,
+    this.progress,
     this.isFavorite = false,
     this.onToggleFavorite,
     this.onDownload,
@@ -70,6 +72,12 @@ class ContentCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (progress != null)
+              LinearProgressIndicator(
+                value: progress!.clamp(0.0, 1.0),
+                minHeight: 4,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
               child: Text(
@@ -119,7 +127,10 @@ class _Poster extends StatelessWidget {
       ),
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
-        return ColoredBox(color: background, child: const Center(child: CircularProgressIndicator()));
+        return ColoredBox(
+          color: background,
+          child: const Center(child: CircularProgressIndicator()),
+        );
       },
     );
   }
