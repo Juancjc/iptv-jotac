@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/player_preferences_service.dart';
+
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.dark);
 
 final maxConcurrentDownloadsProvider = StateProvider<int>((ref) => 2);
+
+final playerPreferencesServiceProvider = Provider<PlayerPreferencesService>((
+  ref,
+) {
+  return PlayerPreferencesService();
+});
 
 /// Subtitle appearance, applied to every playback session. Kept simple
 /// (text color + background + size) to match what TV remotes can reasonably
@@ -12,7 +20,9 @@ final subtitleFontSizeProvider = StateProvider<double>((ref) => 26);
 
 final subtitleTextColorProvider = StateProvider<Color>((ref) => Colors.white);
 
-final subtitleBackgroundColorProvider = StateProvider<Color>((ref) => const Color(0x99000000));
+final subtitleBackgroundColorProvider = StateProvider<Color>(
+  (ref) => const Color(0x99000000),
+);
 
 /// Named presets shown in the settings screen and on the pre-playback sheet.
 const subtitleTextColorOptions = <String, Color>{
