@@ -5,40 +5,142 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 class PlayerPreferences {
+  static const validSceneIds = <String>{
+    'original',
+    'bright',
+    'cinema',
+    'vivid',
+    'night',
+    'monochrome',
+    'custom',
+  };
+
+  final String sceneId;
   final double brightness;
+  final double contrast;
+  final double saturation;
+  final double gamma;
+  final double hue;
+  final double customBrightness;
+  final double customContrast;
+  final double customSaturation;
+  final double customGamma;
+  final double customHue;
   final bool stableFps;
   final double volume;
 
   const PlayerPreferences({
+    this.sceneId = 'original',
     this.brightness = 0,
+    this.contrast = 0,
+    this.saturation = 0,
+    this.gamma = 0,
+    this.hue = 0,
+    this.customBrightness = 0,
+    this.customContrast = 0,
+    this.customSaturation = 0,
+    this.customGamma = 0,
+    this.customHue = 0,
     this.stableFps = true,
     this.volume = 100,
   });
 
   PlayerPreferences copyWith({
+    String? sceneId,
     double? brightness,
+    double? contrast,
+    double? saturation,
+    double? gamma,
+    double? hue,
+    double? customBrightness,
+    double? customContrast,
+    double? customSaturation,
+    double? customGamma,
+    double? customHue,
     bool? stableFps,
     double? volume,
   }) {
     return PlayerPreferences(
+      sceneId: sceneId ?? this.sceneId,
       brightness: brightness ?? this.brightness,
+      contrast: contrast ?? this.contrast,
+      saturation: saturation ?? this.saturation,
+      gamma: gamma ?? this.gamma,
+      hue: hue ?? this.hue,
+      customBrightness: customBrightness ?? this.customBrightness,
+      customContrast: customContrast ?? this.customContrast,
+      customSaturation: customSaturation ?? this.customSaturation,
+      customGamma: customGamma ?? this.customGamma,
+      customHue: customHue ?? this.customHue,
       stableFps: stableFps ?? this.stableFps,
       volume: volume ?? this.volume,
     );
   }
 
   Map<String, Object> toJson() => {
+    'sceneId': sceneId,
     'brightness': brightness,
+    'contrast': contrast,
+    'saturation': saturation,
+    'gamma': gamma,
+    'hue': hue,
+    'customBrightness': customBrightness,
+    'customContrast': customContrast,
+    'customSaturation': customSaturation,
+    'customGamma': customGamma,
+    'customHue': customHue,
     'stableFps': stableFps,
     'volume': volume,
   };
 
   factory PlayerPreferences.fromJson(Map<String, Object?> json) {
-    final storedBrightness = json['brightness'];
+    double adjustment(String key) {
+      final value = json[key];
+      return value is num ? value.toDouble().clamp(-100, 100) : 0;
+    }
+
+    final brightness = adjustment('brightness');
+    final storedSceneId = json['sceneId'];
+    final sceneId =
+        storedSceneId is String && validSceneIds.contains(storedSceneId)
+        ? storedSceneId
+        // Older versions only stored brightness. Preserve that adjustment by
+        // migrating it to the personalized scene.
+        : brightness != 0
+        ? 'custom'
+        : 'original';
     final storedVolume = json['volume'];
     return PlayerPreferences(
-      brightness: storedBrightness is num
-          ? storedBrightness.toDouble().clamp(-100, 100)
+      sceneId: sceneId,
+      brightness: brightness,
+      contrast: adjustment('contrast'),
+      saturation: adjustment('saturation'),
+      gamma: adjustment('gamma'),
+      hue: adjustment('hue'),
+      customBrightness: json.containsKey('customBrightness')
+          ? adjustment('customBrightness')
+          : sceneId == 'custom'
+          ? brightness
+          : 0,
+      customContrast: json.containsKey('customContrast')
+          ? adjustment('customContrast')
+          : sceneId == 'custom'
+          ? adjustment('contrast')
+          : 0,
+      customSaturation: json.containsKey('customSaturation')
+          ? adjustment('customSaturation')
+          : sceneId == 'custom'
+          ? adjustment('saturation')
+          : 0,
+      customGamma: json.containsKey('customGamma')
+          ? adjustment('customGamma')
+          : sceneId == 'custom'
+          ? adjustment('gamma')
+          : 0,
+      customHue: json.containsKey('customHue')
+          ? adjustment('customHue')
+          : sceneId == 'custom'
+          ? adjustment('hue')
           : 0,
       stableFps: json['stableFps'] is bool ? json['stableFps']! as bool : true,
       volume: storedVolume is num ? storedVolume.toDouble().clamp(0, 200) : 100,
@@ -48,8 +150,8 @@ class PlayerPreferences {
 
 /// Persists preferences shared by every playback session.
 ///
-/// Writes are serialized so quickly moving the brightness slider cannot let an
-/// older disk write overwrite a newer value.
+/// Writes are serialized so quickly moving the image sliders cannot let an
+/// older disk write overwrite a newer scene.
 class PlayerPreferencesService {
   static const _fileName = 'player_preferences.json';
 
@@ -79,9 +181,36 @@ class PlayerPreferencesService {
     return _current;
   }
 
-  Future<void> save({double? brightness, bool? stableFps, double? volume}) {
+  Future<void> save({
+    String? sceneId,
+    double? brightness,
+    double? contrast,
+    double? saturation,
+    double? gamma,
+    double? hue,
+    double? customBrightness,
+    double? customContrast,
+    double? customSaturation,
+    double? customGamma,
+    double? customHue,
+    bool? stableFps,
+    double? volume,
+  }) {
     _current = _current.copyWith(
+      sceneId:
+          sceneId != null && PlayerPreferences.validSceneIds.contains(sceneId)
+          ? sceneId
+          : null,
       brightness: brightness?.clamp(-100, 100),
+      contrast: contrast?.clamp(-100, 100),
+      saturation: saturation?.clamp(-100, 100),
+      gamma: gamma?.clamp(-100, 100),
+      hue: hue?.clamp(-100, 100),
+      customBrightness: customBrightness?.clamp(-100, 100),
+      customContrast: customContrast?.clamp(-100, 100),
+      customSaturation: customSaturation?.clamp(-100, 100),
+      customGamma: customGamma?.clamp(-100, 100),
+      customHue: customHue?.clamp(-100, 100),
       stableFps: stableFps,
       volume: volume?.clamp(0, 200),
     );

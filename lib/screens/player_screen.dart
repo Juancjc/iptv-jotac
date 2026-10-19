@@ -14,6 +14,124 @@ import '../providers/settings_providers.dart';
 import '../services/player_preferences_service.dart';
 import '../services/watch_history_repository.dart';
 
+class _VideoAdjustments {
+  final double brightness;
+  final double contrast;
+  final double saturation;
+  final double gamma;
+  final double hue;
+
+  const _VideoAdjustments({
+    this.brightness = 0,
+    this.contrast = 0,
+    this.saturation = 0,
+    this.gamma = 0,
+    this.hue = 0,
+  });
+
+  _VideoAdjustments copyWith({
+    double? brightness,
+    double? contrast,
+    double? saturation,
+    double? gamma,
+    double? hue,
+  }) {
+    return _VideoAdjustments(
+      brightness: brightness ?? this.brightness,
+      contrast: contrast ?? this.contrast,
+      saturation: saturation ?? this.saturation,
+      gamma: gamma ?? this.gamma,
+      hue: hue ?? this.hue,
+    );
+  }
+}
+
+class _VideoScenePreset {
+  final String id;
+  final String name;
+  final String description;
+  final IconData icon;
+  final _VideoAdjustments adjustments;
+
+  const _VideoScenePreset({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.icon,
+    this.adjustments = const _VideoAdjustments(),
+  });
+}
+
+const _videoScenePresets = <_VideoScenePreset>[
+  _VideoScenePreset(
+    id: 'original',
+    name: 'Original',
+    description: 'Imagem sem correcoes.',
+    icon: Icons.settings_backup_restore,
+  ),
+  _VideoScenePreset(
+    id: 'bright',
+    name: 'Claro',
+    description: 'Recupera detalhes em cenas escuras.',
+    icon: Icons.light_mode_outlined,
+    adjustments: _VideoAdjustments(
+      brightness: 14,
+      contrast: 6,
+      saturation: 4,
+      gamma: 10,
+    ),
+  ),
+  _VideoScenePreset(
+    id: 'cinema',
+    name: 'Cinema',
+    description: 'Contraste mais profundo e cores contidas.',
+    icon: Icons.movie_filter_outlined,
+    adjustments: _VideoAdjustments(
+      brightness: -3,
+      contrast: 18,
+      saturation: -5,
+      gamma: -4,
+    ),
+  ),
+  _VideoScenePreset(
+    id: 'vivid',
+    name: 'Vivo',
+    description: 'Mais intensidade e cor para esportes e animacoes.',
+    icon: Icons.color_lens_outlined,
+    adjustments: _VideoAdjustments(
+      brightness: 4,
+      contrast: 14,
+      saturation: 28,
+      gamma: 2,
+    ),
+  ),
+  _VideoScenePreset(
+    id: 'night',
+    name: 'Noturno',
+    description: 'Imagem suave para ambientes com pouca luz.',
+    icon: Icons.nightlight_outlined,
+    adjustments: _VideoAdjustments(
+      brightness: -12,
+      contrast: -6,
+      saturation: -10,
+      gamma: -8,
+    ),
+  ),
+  _VideoScenePreset(
+    id: 'monochrome',
+    name: 'Preto e branco',
+    description: 'Remove as cores e reforca o contraste.',
+    icon: Icons.filter_b_and_w_outlined,
+    adjustments: _VideoAdjustments(contrast: 18, saturation: -100),
+  ),
+  _VideoScenePreset(
+    id: 'custom',
+    name: 'Personalizada',
+    description: 'Seus ajustes salvos de imagem.',
+    icon: Icons.tune,
+  ),
+];
+
 class PlayerScreen extends ConsumerStatefulWidget {
   final String title;
   final String streamUrl;
@@ -41,6 +159,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   late final VideoController _controller;
   late final WatchHistoryRepository _historyRepo;
   late final PlayerPreferencesService _preferencesService;
+  late final Future<void> _playerInitialization;
   Timer? _progressTimer;
   Duration _lastKnownDuration = Duration.zero;
   StreamSubscription<Duration>? _durationSubscription;
@@ -52,9 +171,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   Tracks? _tracks;
   AudioTrack _selectedAudio = AudioTrack.auto();
   SubtitleTrack _selectedSubtitle = SubtitleTrack.no();
-  double _brightness = 0;
+  String _sceneId = 'original';
+  _VideoAdjustments _imageAdjustments = const _VideoAdjustments();
+  _VideoAdjustments _customImageAdjustments = const _VideoAdjustments();
   bool _stableFps = true;
   double _volume = 100;
+  bool _startingPlayback = false;
+  String? _initializationError;
+
+  int get _cacheSeconds =>
+      widget.contentType == WatchableType.channel ? 15 : 45;
+
+  int get _cachePauseSeconds =>
+      widget.contentType == WatchableType.channel ? 3 : 5;
 
   @override
   void initState() {
@@ -63,19 +192,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _preferencesService = ref.read(playerPreferencesServiceProvider);
     _player = Player(
       configuration: const PlayerConfiguration(
-        // More headroom helps IPTV streams survive short network variations.
-        bufferSize: 64 * 1024 * 1024,
+        // Keeps enough compressed media in memory to absorb IPTV jitter and
+        // bitrate peaks without relying on temporary disk I/O.
+        bufferSize: 128 * 1024 * 1024,
       ),
     );
     _controller = VideoController(
       _player,
       configuration: const VideoControllerConfiguration(
         enableHardwareAcceleration: true,
+        // Prefer the hardware decoders mpv considers reliable on the device.
+        hwdec: 'auto-safe',
       ),
     );
 
-    _player.open(Media(widget.streamUrl), play: false);
-    unawaited(_restorePlayerPreferences());
     _durationSubscription = _player.stream.duration.listen((duration) {
       _lastKnownDuration = duration;
       if (!_resumeApplied &&
@@ -95,26 +225,68 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       const Duration(seconds: 10),
       (_) => _saveProgress(),
     );
+    _playerInitialization = _initializePlayer();
   }
 
-  Future<void> _restorePlayerPreferences() async {
-    final preferences = await _preferencesService.load();
-    if (!mounted) return;
+  Future<void> _initializePlayer() async {
+    try {
+      final preferences = await _preferencesService.load();
+      if (!mounted) return;
 
-    setState(() {
-      _brightness = preferences.brightness;
-      _stableFps = preferences.stableFps;
-      _volume = preferences.volume;
-    });
-    await _setNativeProperty('volume-max', '200');
-    await Future.wait([
-      _setNativeProperty(
-        'brightness',
-        preferences.brightness.round().toString(),
-      ),
-      _applyStableFps(preferences.stableFps),
-    ]);
-    await _player.setVolume(preferences.volume);
+      setState(() {
+        _sceneId = preferences.sceneId;
+        _imageAdjustments = _VideoAdjustments(
+          brightness: preferences.brightness,
+          contrast: preferences.contrast,
+          saturation: preferences.saturation,
+          gamma: preferences.gamma,
+          hue: preferences.hue,
+        );
+        _customImageAdjustments = _VideoAdjustments(
+          brightness: preferences.customBrightness,
+          contrast: preferences.customContrast,
+          saturation: preferences.customSaturation,
+          gamma: preferences.customGamma,
+          hue: preferences.customHue,
+        );
+        _stableFps = preferences.stableFps;
+        _volume = preferences.volume;
+      });
+
+      // These options need to be in place before opening the media. In
+      // particular, interpolation may need extra hardware-decoder frames that
+      // cannot be allocated reliably after decoding has already started.
+      await Future.wait([
+        _setNativeProperty('volume-max', '200'),
+        _setNativeProperty('cache', 'yes'),
+        _setNativeProperty('cache-on-disk', 'no'),
+        _setNativeProperty('cache-secs', _cacheSeconds.toString()),
+        _setNativeProperty('demuxer-readahead-secs', _cacheSeconds.toString()),
+        _setNativeProperty('cache-pause', 'yes'),
+        _setNativeProperty('cache-pause-initial', 'yes'),
+        _setNativeProperty('cache-pause-wait', _cachePauseSeconds.toString()),
+        _setNativeProperty('network-timeout', '15'),
+        _setNativeProperty('framedrop', 'vo'),
+        _setNativeProperty('hwdec-extra-frames', '8'),
+        _applyImageAdjustments(
+          _VideoAdjustments(
+            brightness: preferences.brightness,
+            contrast: preferences.contrast,
+            saturation: preferences.saturation,
+            gamma: preferences.gamma,
+            hue: preferences.hue,
+          ),
+        ),
+        _applyStableFps(preferences.stableFps),
+      ]);
+      await _player.open(Media(widget.streamUrl), play: false);
+      await _player.setVolume(preferences.volume);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _initializationError = 'Nao foi possivel preparar o video: $error';
+      });
+    }
   }
 
   Future<void> _setNativeProperty(String name, String value) async {
@@ -135,15 +307,75 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     await Future.wait([
       _setNativeProperty('video-sync', enabled ? 'display-resample' : 'audio'),
       _setNativeProperty('interpolation', enabled ? 'yes' : 'no'),
+      _setNativeProperty('interpolation-threshold', enabled ? '-1' : '0.01'),
       _setNativeProperty('tscale', enabled ? 'oversample' : 'linear'),
     ]);
   }
 
-  void _changeBrightness(double value) {
-    final brightness = value.clamp(-100.0, 100.0).toDouble();
-    setState(() => _brightness = brightness);
-    unawaited(_setNativeProperty('brightness', brightness.round().toString()));
-    unawaited(_preferencesService.save(brightness: brightness));
+  Future<void> _applyImageAdjustments(_VideoAdjustments adjustments) {
+    return Future.wait([
+      _setNativeProperty(
+        'brightness',
+        adjustments.brightness.round().toString(),
+      ),
+      _setNativeProperty('contrast', adjustments.contrast.round().toString()),
+      _setNativeProperty(
+        'saturation',
+        adjustments.saturation.round().toString(),
+      ),
+      _setNativeProperty('gamma', adjustments.gamma.round().toString()),
+      _setNativeProperty('hue', adjustments.hue.round().toString()),
+    ]);
+  }
+
+  void _selectVideoScene(String sceneId) {
+    final preset = _videoScenePresets.firstWhere(
+      (scene) => scene.id == sceneId,
+      orElse: () => _videoScenePresets.first,
+    );
+    final adjustments = preset.id == 'custom'
+        ? _customImageAdjustments
+        : preset.adjustments;
+
+    setState(() {
+      _sceneId = preset.id;
+      _imageAdjustments = adjustments;
+    });
+    unawaited(_applyImageAdjustments(adjustments));
+    unawaited(_saveVideoScene());
+  }
+
+  void _changeVideoAdjustments(_VideoAdjustments adjustments) {
+    final normalized = _VideoAdjustments(
+      brightness: adjustments.brightness.clamp(-100, 100),
+      contrast: adjustments.contrast.clamp(-100, 100),
+      saturation: adjustments.saturation.clamp(-100, 100),
+      gamma: adjustments.gamma.clamp(-100, 100),
+      hue: adjustments.hue.clamp(-100, 100),
+    );
+    setState(() {
+      _sceneId = 'custom';
+      _imageAdjustments = normalized;
+      _customImageAdjustments = normalized;
+    });
+    unawaited(_applyImageAdjustments(normalized));
+    unawaited(_saveVideoScene());
+  }
+
+  Future<void> _saveVideoScene() {
+    return _preferencesService.save(
+      sceneId: _sceneId,
+      brightness: _imageAdjustments.brightness,
+      contrast: _imageAdjustments.contrast,
+      saturation: _imageAdjustments.saturation,
+      gamma: _imageAdjustments.gamma,
+      hue: _imageAdjustments.hue,
+      customBrightness: _customImageAdjustments.brightness,
+      customContrast: _customImageAdjustments.contrast,
+      customSaturation: _customImageAdjustments.saturation,
+      customGamma: _customImageAdjustments.gamma,
+      customHue: _customImageAdjustments.hue,
+    );
   }
 
   void _changeStableFps(bool enabled) {
@@ -203,11 +435,34 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 
-  void _startWatching() {
-    _player.setAudioTrack(_selectedAudio);
-    _player.setSubtitleTrack(_selectedSubtitle);
-    _player.play();
-    setState(() => _readyToWatch = true);
+  Future<void> _startWatching() async {
+    if (_startingPlayback) return;
+    setState(() => _startingPlayback = true);
+
+    try {
+      await _playerInitialization;
+      if (!mounted) return;
+      if (_initializationError != null) {
+        setState(() => _startingPlayback = false);
+        return;
+      }
+
+      await _player.setAudioTrack(_selectedAudio);
+      await _player.setSubtitleTrack(_selectedSubtitle);
+      await _player.play();
+      if (mounted) {
+        setState(() {
+          _startingPlayback = false;
+          _readyToWatch = true;
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _startingPlayback = false;
+        _initializationError = 'Nao foi possivel iniciar o video: $error';
+      });
+    }
   }
 
   @override
@@ -230,6 +485,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final desktopControls = MaterialDesktopVideoControlsThemeData(
       hideMouseOnControlsRemoval: Platform.isWindows,
       modifyVolumeOnScroll: false,
+      playAndPauseOnTap: true,
       controlsHoverDuration: const Duration(seconds: 3),
       bottomButtonBar: [
         _SeekSecondsButton(seconds: -30, onPressed: () => _seekRelative(-30)),
@@ -239,10 +495,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         const MaterialDesktopPositionIndicator(),
         const Spacer(),
         _PlayerVideoSettingsButton(
-          brightness: _brightness,
+          sceneId: _sceneId,
+          adjustments: _imageAdjustments,
+          customAdjustments: _customImageAdjustments,
           stableFps: _stableFps,
           volume: _volume,
-          onBrightnessChanged: _changeBrightness,
+          cacheSeconds: _cacheSeconds,
+          onSceneChanged: _selectVideoScene,
+          onAdjustmentsChanged: _changeVideoAdjustments,
           onStableFpsChanged: _changeStableFps,
           onVolumeChanged: _changeVolume,
         ),
@@ -310,10 +570,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               selectedAudio: _selectedAudio,
               selectedSubtitle: _selectedSubtitle,
               startPositionSeconds: widget.startPositionSeconds,
+              isStarting: _startingPlayback,
+              errorMessage: _initializationError,
               onAudioChanged: (track) => setState(() => _selectedAudio = track),
               onSubtitleChanged: (track) =>
                   setState(() => _selectedSubtitle = track),
-              onWatch: _startWatching,
+              onWatch: () => unawaited(_startWatching()),
             ),
         ],
       ),
@@ -343,18 +605,26 @@ class _SeekSecondsButton extends StatelessWidget {
 }
 
 class _PlayerVideoSettingsButton extends StatelessWidget {
-  final double brightness;
+  final String sceneId;
+  final _VideoAdjustments adjustments;
+  final _VideoAdjustments customAdjustments;
   final bool stableFps;
   final double volume;
-  final ValueChanged<double> onBrightnessChanged;
+  final int cacheSeconds;
+  final ValueChanged<String> onSceneChanged;
+  final ValueChanged<_VideoAdjustments> onAdjustmentsChanged;
   final ValueChanged<bool> onStableFpsChanged;
   final ValueChanged<double> onVolumeChanged;
 
   const _PlayerVideoSettingsButton({
-    required this.brightness,
+    required this.sceneId,
+    required this.adjustments,
+    required this.customAdjustments,
     required this.stableFps,
     required this.volume,
-    required this.onBrightnessChanged,
+    required this.cacheSeconds,
+    required this.onSceneChanged,
+    required this.onAdjustmentsChanged,
     required this.onStableFpsChanged,
     required this.onVolumeChanged,
   });
@@ -371,7 +641,9 @@ class _PlayerVideoSettingsButton extends StatelessWidget {
   }
 
   Future<void> _showSettings(BuildContext context) async {
-    var draftBrightness = brightness;
+    var draftSceneId = sceneId;
+    var draftAdjustments = adjustments;
+    var draftCustomAdjustments = customAdjustments;
     var draftStableFps = stableFps;
     var draftVolume = volume;
 
@@ -379,7 +651,6 @@ class _PlayerVideoSettingsButton extends StatelessWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final brightnessLabel = draftBrightness.round();
           return AlertDialog(
             title: const Row(
               children: [
@@ -389,97 +660,198 @@ class _PlayerVideoSettingsButton extends StatelessWidget {
               ],
             ),
             content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.brightness_6_outlined),
-                      const SizedBox(width: 10),
-                      const Expanded(child: Text('Brilho')),
-                      Text(
-                        brightnessLabel > 0
-                            ? '+$brightnessLabel'
-                            : '$brightnessLabel',
-                      ),
-                    ],
-                  ),
-                  Slider(
-                    value: draftBrightness,
-                    min: -100,
-                    max: 100,
-                    divisions: 200,
-                    label: brightnessLabel > 0
-                        ? '+$brightnessLabel'
-                        : '$brightnessLabel',
-                    onChanged: (value) {
-                      setDialogState(() => draftBrightness = value);
-                      onBrightnessChanged(value);
-                    },
-                  ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        setDialogState(() => draftBrightness = 0);
-                        onBrightnessChanged(0);
+              constraints: const BoxConstraints(maxWidth: 520, maxHeight: 680),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Cenas de imagem',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final scene in _videoScenePresets)
+                          ChoiceChip(
+                            avatar: Icon(scene.icon, size: 18),
+                            label: Text(scene.name),
+                            selected: draftSceneId == scene.id,
+                            onSelected: (selected) {
+                              if (!selected) return;
+                              final selectedAdjustments = scene.id == 'custom'
+                                  ? draftCustomAdjustments
+                                  : scene.adjustments;
+                              setDialogState(() {
+                                draftSceneId = scene.id;
+                                draftAdjustments = selectedAdjustments;
+                              });
+                              onSceneChanged(scene.id);
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _videoScenePresets
+                          .firstWhere((scene) => scene.id == draftSceneId)
+                          .description,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const Divider(height: 28),
+                    _ImageAdjustmentSlider(
+                      icon: Icons.brightness_6_outlined,
+                      label: 'Brilho',
+                      value: draftAdjustments.brightness,
+                      onChanged: (value) {
+                        final updated = draftAdjustments.copyWith(
+                          brightness: value,
+                        );
+                        setDialogState(() {
+                          draftSceneId = 'custom';
+                          draftAdjustments = updated;
+                          draftCustomAdjustments = updated;
+                        });
+                        onAdjustmentsChanged(updated);
                       },
-                      icon: const Icon(Icons.restart_alt),
-                      label: const Text('Restaurar brilho'),
                     ),
-                  ),
-                  const Divider(height: 28),
-                  Row(
-                    children: [
-                      Icon(
-                        draftVolume > 100
-                            ? Icons.volume_up
-                            : draftVolume == 0
-                            ? Icons.volume_off
-                            : Icons.volume_down,
-                        color: draftVolume > 100 ? Colors.orangeAccent : null,
+                    _ImageAdjustmentSlider(
+                      icon: Icons.contrast,
+                      label: 'Contraste',
+                      value: draftAdjustments.contrast,
+                      onChanged: (value) {
+                        final updated = draftAdjustments.copyWith(
+                          contrast: value,
+                        );
+                        setDialogState(() {
+                          draftSceneId = 'custom';
+                          draftAdjustments = updated;
+                          draftCustomAdjustments = updated;
+                        });
+                        onAdjustmentsChanged(updated);
+                      },
+                    ),
+                    _ImageAdjustmentSlider(
+                      icon: Icons.palette_outlined,
+                      label: 'Saturacao',
+                      value: draftAdjustments.saturation,
+                      onChanged: (value) {
+                        final updated = draftAdjustments.copyWith(
+                          saturation: value,
+                        );
+                        setDialogState(() {
+                          draftSceneId = 'custom';
+                          draftAdjustments = updated;
+                          draftCustomAdjustments = updated;
+                        });
+                        onAdjustmentsChanged(updated);
+                      },
+                    ),
+                    _ImageAdjustmentSlider(
+                      icon: Icons.tonality_outlined,
+                      label: 'Gama',
+                      value: draftAdjustments.gamma,
+                      onChanged: (value) {
+                        final updated = draftAdjustments.copyWith(gamma: value);
+                        setDialogState(() {
+                          draftSceneId = 'custom';
+                          draftAdjustments = updated;
+                          draftCustomAdjustments = updated;
+                        });
+                        onAdjustmentsChanged(updated);
+                      },
+                    ),
+                    _ImageAdjustmentSlider(
+                      icon: Icons.gradient_outlined,
+                      label: 'Matiz',
+                      value: draftAdjustments.hue,
+                      onChanged: (value) {
+                        final updated = draftAdjustments.copyWith(hue: value);
+                        setDialogState(() {
+                          draftSceneId = 'custom';
+                          draftAdjustments = updated;
+                          draftCustomAdjustments = updated;
+                        });
+                        onAdjustmentsChanged(updated);
+                      },
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          const original = _VideoAdjustments();
+                          setDialogState(() {
+                            draftSceneId = 'original';
+                            draftAdjustments = original;
+                          });
+                          onSceneChanged('original');
+                        },
+                        icon: const Icon(Icons.restart_alt),
+                        label: const Text('Restaurar imagem original'),
                       ),
-                      const SizedBox(width: 10),
-                      const Expanded(child: Text('Volume')),
-                      Text('${draftVolume.round()}%'),
-                    ],
-                  ),
-                  Slider(
-                    value: draftVolume.clamp(0, 200),
-                    min: 0,
-                    max: 200,
-                    divisions: 40,
-                    label: '${draftVolume.round()}%',
-                    onChanged: (value) {
-                      setDialogState(() => draftVolume = value);
-                      onVolumeChanged(value);
-                    },
-                  ),
-                  const Text(
-                    'Acima de 100% aplica ganho e pode causar distorcao em alguns audios.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  const Divider(height: 28),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('FPS estavel'),
-                    subtitle: const Text(
-                      'Suaviza a exibicao quando os FPS do video e do monitor nao coincidem.',
                     ),
-                    value: draftStableFps,
-                    onChanged: (value) {
-                      setDialogState(() => draftStableFps = value);
-                      onStableFpsChanged(value);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Atalhos: setas esquerda/direita ou J/L voltam e avancam 30 segundos.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
+                    const Text(
+                      'Ao mover qualquer controle, a cena Personalizada e atualizada e salva automaticamente.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    const Divider(height: 28),
+                    Row(
+                      children: [
+                        Icon(
+                          draftVolume > 100
+                              ? Icons.volume_up
+                              : draftVolume == 0
+                              ? Icons.volume_off
+                              : Icons.volume_down,
+                          color: draftVolume > 100 ? Colors.orangeAccent : null,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(child: Text('Volume')),
+                        Text('${draftVolume.round()}%'),
+                      ],
+                    ),
+                    Slider(
+                      value: draftVolume.clamp(0, 200),
+                      min: 0,
+                      max: 200,
+                      divisions: 40,
+                      label: '${draftVolume.round()}%',
+                      onChanged: (value) {
+                        setDialogState(() => draftVolume = value);
+                        onVolumeChanged(value);
+                      },
+                    ),
+                    const Text(
+                      'Acima de 100% aplica ganho e pode causar distorcao em alguns audios.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    const Divider(height: 28),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('FPS estavel'),
+                      subtitle: const Text(
+                        'Suaviza a exibicao quando os FPS do video e do monitor nao coincidem.',
+                      ),
+                      value: draftStableFps,
+                      onChanged: (value) {
+                        setDialogState(() => draftStableFps = value);
+                        onStableFpsChanged(value);
+                      },
+                    ),
+                    Text(
+                      'Cache de rede: $cacheSeconds segundos. Se a conexao oscilar, o player espera alguns segundos antes de continuar para evitar varias pausas curtas.',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Atalhos: setas esquerda/direita ou J/L voltam e avancam 30 segundos.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
             ),
             actions: [
@@ -491,6 +863,46 @@ class _PlayerVideoSettingsButton extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _ImageAdjustmentSlider extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  const _ImageAdjustmentSlider({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final roundedValue = value.round();
+    final valueLabel = roundedValue > 0 ? '+$roundedValue' : '$roundedValue';
+    return Column(
+      children: [
+        Row(
+          children: [
+            Icon(icon),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label)),
+            Text(valueLabel),
+          ],
+        ),
+        Slider(
+          value: value.clamp(-100, 100),
+          min: -100,
+          max: 100,
+          divisions: 200,
+          label: valueLabel,
+          onChanged: onChanged,
+        ),
+      ],
     );
   }
 }
@@ -612,6 +1024,8 @@ class _PrePlaybackOverlay extends StatelessWidget {
   final AudioTrack selectedAudio;
   final SubtitleTrack selectedSubtitle;
   final int startPositionSeconds;
+  final bool isStarting;
+  final String? errorMessage;
   final ValueChanged<AudioTrack> onAudioChanged;
   final ValueChanged<SubtitleTrack> onSubtitleChanged;
   final VoidCallback onWatch;
@@ -623,6 +1037,8 @@ class _PrePlaybackOverlay extends StatelessWidget {
     required this.selectedAudio,
     required this.selectedSubtitle,
     required this.startPositionSeconds,
+    required this.isStarting,
+    required this.errorMessage,
     required this.onAudioChanged,
     required this.onSubtitleChanged,
     required this.onWatch,
@@ -718,10 +1134,19 @@ class _PrePlaybackOverlay extends StatelessWidget {
                       width: double.infinity,
                       child: FilledButton.icon(
                         autofocus: true,
-                        onPressed: onWatch,
-                        icon: const Icon(Icons.play_arrow),
+                        onPressed: isStarting ? null : onWatch,
+                        icon: isStarting
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.play_arrow),
                         label: Text(
-                          startPositionSeconds > 0
+                          isStarting
+                              ? 'Preparando o video...'
+                              : startPositionSeconds > 0
                               ? 'Continuar de ${_formatPlaybackTime(startPositionSeconds)}'
                               : 'Assistir',
                         ),
@@ -730,6 +1155,14 @@ class _PrePlaybackOverlay extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.redAccent),
+                      ),
+                    ],
                   ],
                 ),
               ),
