@@ -139,6 +139,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final WatchableType contentType;
   final String? posterUrl;
   final int startPositionSeconds;
+  final ValueChanged<Future<void>>? onDisposed;
 
   const PlayerScreen({
     super.key,
@@ -148,13 +149,15 @@ class PlayerScreen extends ConsumerStatefulWidget {
     required this.contentType,
     this.posterUrl,
     this.startPositionSeconds = 0,
+    this.onDisposed,
   });
 
   @override
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends ConsumerState<PlayerScreen> {
+class _PlayerScreenState extends ConsumerState<PlayerScreen>
+    with WidgetsBindingObserver {
   late final Player _player;
   late final VideoController _controller;
   late final WatchHistoryRepository _historyRepo;
@@ -175,6 +178,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   _VideoAdjustments _imageAdjustments = const _VideoAdjustments();
   _VideoAdjustments _customImageAdjustments = const _VideoAdjustments();
   bool _stableFps = true;
+  BoxFit _videoFit = BoxFit.contain;
   double _volume = 100;
   bool _startingPlayback = false;
   String? _initializationError;
@@ -188,6 +192,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (Platform.isAndroid) unawaited(_enterAndroidFullscreen());
     _historyRepo = ref.read(watchHistoryRepositoryProvider);
     _preferencesService = ref.read(playerPreferencesServiceProvider);
     _player = Player(
@@ -233,6 +239,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_startWatching());
       });
+    }
+  }
+
+  Future<void> _enterAndroidFullscreen() async {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (Platform.isAndroid && state == AppLifecycleState.resumed) {
+      unawaited(_enterAndroidFullscreen());
     }
   }
 
@@ -475,12 +496,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (Platform.isAndroid) {
+      // Undo immersive mode: bring the status and navigation bars back and
+      // let the rest of the app rotate freely again.
+      unawaited(
+        SystemChrome.setEnabledSystemUIMode(
+          SystemUiMode.manual,
+          overlays: SystemUiOverlay.values,
+        ),
+      );
+      unawaited(SystemChrome.setPreferredOrientations(const []));
+    }
     _progressTimer?.cancel();
     _durationSubscription?.cancel();
     _tracksSubscription?.cancel();
     _volumeSubscription?.cancel();
     unawaited(_saveProgress());
-    _player.dispose();
+    final disposal = _player.dispose();
+    widget.onDisposed?.call(disposal);
+    unawaited(disposal);
     super.dispose();
   }
 
@@ -489,6 +524,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final fontSize = ref.watch(subtitleFontSizeProvider);
     final textColor = ref.watch(subtitleTextColorProvider);
     final backgroundColor = ref.watch(subtitleBackgroundColorProvider);
+
+    final settingsButton = _PlayerVideoSettingsButton(
+      sceneId: _sceneId,
+      adjustments: _imageAdjustments,
+      customAdjustments: _customImageAdjustments,
+      stableFps: _stableFps,
+      volume: _volume,
+      cacheSeconds: _cacheSeconds,
+      onSceneChanged: _selectVideoScene,
+      onAdjustmentsChanged: _changeVideoAdjustments,
+      onStableFpsChanged: _changeStableFps,
+      onVolumeChanged: _changeVolume,
+    );
 
     final desktopControls = MaterialDesktopVideoControlsThemeData(
       hideMouseOnControlsRemoval: Platform.isWindows,
@@ -502,18 +550,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         _BoostVolumeButton(volume: _volume, onChanged: _changeVolume),
         const MaterialDesktopPositionIndicator(),
         const Spacer(),
-        _PlayerVideoSettingsButton(
-          sceneId: _sceneId,
-          adjustments: _imageAdjustments,
-          customAdjustments: _customImageAdjustments,
-          stableFps: _stableFps,
-          volume: _volume,
-          cacheSeconds: _cacheSeconds,
-          onSceneChanged: _selectVideoScene,
-          onAdjustmentsChanged: _changeVideoAdjustments,
-          onStableFpsChanged: _changeStableFps,
-          onVolumeChanged: _changeVolume,
-        ),
+        settingsButton,
         const MaterialDesktopFullscreenButton(),
       ],
       keyboardShortcuts: {
@@ -545,12 +582,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(widget.title),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-      ),
+      appBar: Platform.isAndroid
+          ? null
+          : AppBar(
+              title: Text(widget.title),
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+            ),
       body: Stack(
+        fit: StackFit.expand,
         children: [
           MaterialDesktopVideoControlsTheme(
             normal: desktopControls,
@@ -558,6 +598,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             child: Center(
               child: Video(
                 controller: _controller,
+                fit: _videoFit,
+                // media_kit's mobile controls only appear on a touch tap and
+                // ignore the desktop bar above (volume, +-30s, settings), so
+                // on Android/Fire TV nothing showed up with a remote. Android
+                // gets its own overlay instead, see _AndroidPlayerControls.
+                controls: Platform.isAndroid
+                    ? NoVideoControls
+                    : AdaptiveVideoControls,
                 subtitleViewConfiguration: SubtitleViewConfiguration(
                   style: TextStyle(
                     height: 1.4,
@@ -570,6 +618,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               ),
             ),
           ),
+          if (Platform.isAndroid && _readyToWatch)
+            _AndroidPlayerControls(
+              player: _player,
+              title: widget.title,
+              canSeek: widget.contentType != WatchableType.channel,
+              volume: _volume,
+              fit: _videoFit,
+              onVolumeChanged: _changeVolume,
+              onSeekRelative: _seekRelative,
+              onFitChanged: (fit) => setState(() => _videoFit = fit),
+              onOpenSettings: settingsButton._showSettings,
+            ),
           // Channels start on their own, so the overlay only comes back to
           // show an error (and a retry button).
           if (!_readyToWatch &&
@@ -591,6 +651,447 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Player controls for Android phones and Android/Fire TV boxes. Shown on a
+/// tap or on any remote key, hidden again after a few seconds; while visible
+/// the D-pad moves between the buttons (the focused one is drawn inverted so
+/// it stands out from across the room).
+class _AndroidPlayerControls extends StatefulWidget {
+  final Player player;
+  final String title;
+  final bool canSeek;
+  final double volume;
+  final BoxFit fit;
+  final ValueChanged<double> onVolumeChanged;
+  final ValueChanged<int> onSeekRelative;
+  final ValueChanged<BoxFit> onFitChanged;
+  final Future<void> Function(BuildContext context) onOpenSettings;
+
+  const _AndroidPlayerControls({
+    required this.player,
+    required this.title,
+    required this.canSeek,
+    required this.volume,
+    required this.fit,
+    required this.onVolumeChanged,
+    required this.onSeekRelative,
+    required this.onFitChanged,
+    required this.onOpenSettings,
+  });
+
+  @override
+  State<_AndroidPlayerControls> createState() => _AndroidPlayerControlsState();
+}
+
+class _AndroidPlayerControlsState extends State<_AndroidPlayerControls> {
+  static const _hideAfter = Duration(seconds: 5);
+  static const _fits = [BoxFit.contain, BoxFit.cover, BoxFit.fill];
+
+  final _rootFocus = FocusNode(debugLabel: 'player-controls');
+  final _playFocus = FocusNode(debugLabel: 'player-play');
+  Timer? _hideTimer;
+  bool _visible = true;
+  double _lastAudibleVolume = 100;
+
+  @override
+  void initState() {
+    super.initState();
+    _restartHideTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _playFocus.requestFocus();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _AndroidPlayerControls oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.volume > 0) _lastAudibleVolume = widget.volume;
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    _rootFocus.dispose();
+    _playFocus.dispose();
+    super.dispose();
+  }
+
+  void _restartHideTimer() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(_hideAfter, _hide);
+  }
+
+  void _show() {
+    _restartHideTimer();
+    if (_visible) return;
+    setState(() => _visible = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _playFocus.requestFocus();
+    });
+  }
+
+  void _hide() {
+    _hideTimer?.cancel();
+    if (!mounted || !_visible) return;
+    // Keep focus inside the player so the next key press reveals it again.
+    _rootFocus.requestFocus();
+    setState(() => _visible = false);
+  }
+
+  /// Runs a button action and keeps the controls on screen for a while more.
+  VoidCallback _act(VoidCallback action) => () {
+    action();
+    _restartHideTimer();
+  };
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    // Back must keep leaving the player.
+    if (key == LogicalKeyboardKey.goBack || key == LogicalKeyboardKey.escape) {
+      return KeyEventResult.ignored;
+    }
+    if (key == LogicalKeyboardKey.mediaPlayPause) {
+      unawaited(widget.player.playOrPause());
+      _show();
+      return KeyEventResult.handled;
+    }
+    if (!_visible) {
+      // The first press only reveals the controls.
+      _show();
+      return KeyEventResult.handled;
+    }
+    _restartHideTimer();
+    return KeyEventResult.ignored;
+  }
+
+  void _toggleMute() {
+    widget.onVolumeChanged(
+      widget.volume == 0
+          ? _lastAudibleVolume.clamp(1.0, 200.0).toDouble()
+          : 0.0,
+    );
+  }
+
+  void _cycleFit() {
+    final next = _fits[(_fits.indexOf(widget.fit) + 1) % _fits.length];
+    widget.onFitChanged(next);
+  }
+
+  String get _fitLabel => switch (widget.fit) {
+    BoxFit.cover => 'Preencher',
+    BoxFit.fill => 'Esticar',
+    _ => 'Original',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final volume = widget.volume.clamp(0.0, 200.0).toDouble();
+
+    return Focus(
+      focusNode: _rootFocus,
+      onKeyEvent: _onKey,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _visible ? _hide() : _show(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            StreamBuilder<bool>(
+              stream: widget.player.stream.buffering,
+              initialData: widget.player.state.buffering,
+              builder: (context, snapshot) => snapshot.data == true
+                  ? const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            ExcludeFocus(
+              excluding: !_visible,
+              child: IgnorePointer(
+                ignoring: !_visible,
+                child: AnimatedOpacity(
+                  opacity: _visible ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: _buildControls(context, volume),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControls(BuildContext context, double volume) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.black87, Colors.transparent, Colors.black87],
+          stops: [0, .5, 1],
+        ),
+      ),
+      child: SafeArea(
+        minimum: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                _OverlayButton(
+                  icon: Icons.arrow_back,
+                  tooltip: 'Voltar',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (!widget.canSeek) const _LiveBadge(),
+              ],
+            ),
+            const Spacer(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (widget.canSeek)
+                  _OverlayButton(
+                    icon: Icons.replay_30,
+                    tooltip: 'Voltar 30 segundos',
+                    size: 36,
+                    onPressed: _act(() => widget.onSeekRelative(-30)),
+                  ),
+                const SizedBox(width: 24),
+                StreamBuilder<bool>(
+                  stream: widget.player.stream.playing,
+                  initialData: widget.player.state.playing,
+                  builder: (context, snapshot) {
+                    final playing = snapshot.data ?? false;
+                    return _OverlayButton(
+                      focusNode: _playFocus,
+                      icon: playing ? Icons.pause : Icons.play_arrow,
+                      tooltip: playing ? 'Pausar' : 'Reproduzir',
+                      size: 52,
+                      onPressed: _act(
+                        () => unawaited(widget.player.playOrPause()),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 24),
+                if (widget.canSeek)
+                  _OverlayButton(
+                    icon: Icons.forward_30,
+                    tooltip: 'Avancar 30 segundos',
+                    size: 36,
+                    onPressed: _act(() => widget.onSeekRelative(30)),
+                  ),
+              ],
+            ),
+            const Spacer(),
+            if (widget.canSeek) _buildProgressBar(),
+            Row(
+              children: [
+                _OverlayButton(
+                  icon: volume == 0
+                      ? Icons.volume_off
+                      : volume < 50
+                      ? Icons.volume_down
+                      : Icons.volume_up,
+                  tooltip: volume == 0 ? 'Ativar som' : 'Silenciar',
+                  onPressed: _act(_toggleMute),
+                ),
+                const SizedBox(width: 8),
+                _OverlayButton(
+                  icon: Icons.remove,
+                  tooltip: 'Diminuir volume',
+                  onPressed: _act(() => widget.onVolumeChanged(volume - 10)),
+                ),
+                SizedBox(
+                  width: 64,
+                  child: Text(
+                    '${volume.round()}%',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: volume > 100 ? Colors.orangeAccent : Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                _OverlayButton(
+                  icon: Icons.add,
+                  tooltip: 'Aumentar volume (maximo 200%)',
+                  onPressed: _act(() => widget.onVolumeChanged(volume + 10)),
+                ),
+                const Spacer(),
+                _OverlayButton(
+                  icon: widget.fit == BoxFit.contain
+                      ? Icons.fullscreen
+                      : Icons.fullscreen_exit,
+                  tooltip: 'Tela: $_fitLabel',
+                  label: _fitLabel,
+                  onPressed: _act(_cycleFit),
+                ),
+                const SizedBox(width: 8),
+                _OverlayButton(
+                  icon: Icons.tune,
+                  tooltip: 'Imagem e reproducao',
+                  onPressed: () async {
+                    _hideTimer?.cancel();
+                    await widget.onOpenSettings(context);
+                    if (mounted) _restartHideTimer();
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressBar() {
+    const timeStyle = TextStyle(color: Colors.white, fontSize: 13);
+    return StreamBuilder<Duration>(
+      stream: widget.player.stream.position,
+      initialData: widget.player.state.position,
+      builder: (context, snapshot) {
+        final position = snapshot.data ?? Duration.zero;
+        final duration = widget.player.state.duration;
+        final max = duration.inMilliseconds.toDouble();
+        return Row(
+          children: [
+            Text(_formatDuration(position), style: timeStyle),
+            Expanded(
+              // Touch only: with a remote the +-30s buttons seek, and a
+              // focusable slider would swallow left/right navigation.
+              child: ExcludeFocus(
+                child: Slider(
+                  value: max > 0
+                      ? position.inMilliseconds.toDouble().clamp(0, max)
+                      : 0,
+                  max: max > 0 ? max : 1,
+                  onChanged: max > 0
+                      ? (value) {
+                          _restartHideTimer();
+                          unawaited(
+                            widget.player.seek(
+                              Duration(milliseconds: value.round()),
+                            ),
+                          );
+                        }
+                      : null,
+                ),
+              ),
+            ),
+            Text(_formatDuration(duration), style: timeStyle),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _formatDuration(Duration value) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final hours = value.inHours;
+    final minutes = two(value.inMinutes.remainder(60));
+    final seconds = two(value.inSeconds.remainder(60));
+    return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
+  }
+}
+
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(left: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.redAccent,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'AO VIVO',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+/// Round player button that inverts its colors when focused by the D-pad.
+class _OverlayButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final FocusNode? focusNode;
+  final double size;
+  final String? label;
+
+  const _OverlayButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.focusNode,
+    this.size = 26,
+    this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = ButtonStyle(
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.focused)
+            ? Colors.white
+            : Colors.black54,
+      ),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) =>
+            states.contains(WidgetState.focused) ? Colors.black : Colors.white,
+      ),
+      padding: const WidgetStatePropertyAll(EdgeInsets.all(10)),
+    );
+    final label = this.label;
+    return Tooltip(
+      message: tooltip,
+      child: label == null
+          ? IconButton(
+              focusNode: focusNode,
+              style: style,
+              iconSize: size,
+              icon: Icon(icon),
+              onPressed: onPressed,
+            )
+          : TextButton.icon(
+              focusNode: focusNode,
+              style: style.copyWith(
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+              ),
+              icon: Icon(icon, size: size),
+              label: Text(label),
+              onPressed: onPressed,
+            ),
     );
   }
 }

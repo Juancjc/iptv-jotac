@@ -29,6 +29,7 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
   /// inline player is removed meanwhile so only one stream/decoder is open
   /// (TV boxes often can't run two).
   bool _fullscreenOpen = false;
+  Future<void>? _inlineDisposal;
 
   /// The sidebar shows one list at a time: the categories, or (once one is
   /// opened) only that category's channels. `_selectedCategory == null`
@@ -120,7 +121,8 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
               categoryCounts: categoryCounts,
               selectedCategory: _selectedCategory,
               categoryOpen: _categoryOpen,
-              showChannels: _categoryOpen || _search.isNotEmpty || _favoritesOnly,
+              showChannels:
+                  _categoryOpen || _search.isNotEmpty || _favoritesOnly,
               selectedChannelId: _selectedChannel?.id,
               favoritesOnly: _favoritesOnly,
               onSearchChanged: (value) =>
@@ -158,7 +160,9 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
                       : _InlineChannelPlayer(
                           key: ValueKey(_selectedChannel!.id),
                           channel: _selectedChannel!,
-                          onFullscreen: () => _openFullscreen(_selectedChannel!),
+                          onFullscreen: () =>
+                              _openFullscreen(_selectedChannel!),
+                          onDisposed: (disposal) => _inlineDisposal = disposal,
                         ),
                 ),
               ],
@@ -178,18 +182,30 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
   Future<void> _openFullscreen(Channel channel) async {
     if (_fullscreenOpen) return;
     setState(() => _fullscreenOpen = true);
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    try {
+      // Remove the preview and release its decoder before opening another
+      // player. Android TV boxes may only support one hardware decoder.
+      await WidgetsBinding.instance.endOfFrame;
+      await _inlineDisposal;
+      if (!mounted) return;
+      Future<void>? fullscreenDisposal;
+      final route = MaterialPageRoute<void>(
         builder: (_) => PlayerScreen(
           title: channel.name,
           streamUrl: channel.streamUrl,
           contentId: channel.id,
           contentType: WatchableType.channel,
           posterUrl: channel.logoUrl,
+          onDisposed: (disposal) => fullscreenDisposal = disposal,
         ),
-      ),
-    );
-    if (mounted) setState(() => _fullscreenOpen = false);
+      );
+      await Navigator.of(context, rootNavigator: true).push(route);
+      // push completes at pop time, before the exit transition disposes Video.
+      await route.completed;
+      await fullscreenDisposal;
+    } finally {
+      if (mounted) setState(() => _fullscreenOpen = false);
+    }
   }
 
   String _categoryOf(Channel channel) {
@@ -282,7 +298,10 @@ class _ChannelSidebar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 5),
-          if (showChannels) ..._buildChannelList(colors) else ..._buildCategoryList(colors),
+          if (showChannels)
+            ..._buildChannelList(colors)
+          else
+            ..._buildCategoryList(colors),
         ],
       ),
     );
@@ -378,7 +397,11 @@ class _BackToAllTile extends StatelessWidget {
   final String category;
   final VoidCallback onTap;
 
-  const _BackToAllTile({required this.focusNode, required this.category, required this.onTap});
+  const _BackToAllTile({
+    required this.focusNode,
+    required this.category,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -400,7 +423,11 @@ class _BackToAllTile extends StatelessWidget {
                   'Voltar para todas as listas',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: colors.primary),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: colors.primary,
+                  ),
                 ),
               ),
               Flexible(
@@ -408,7 +435,10 @@ class _BackToAllTile extends StatelessWidget {
                   category,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -609,7 +639,10 @@ class _ChannelPlaceholder extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Clique duas vezes no canal para ver em tela cheia',
-            style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant.withValues(alpha: .8)),
+            style: TextStyle(
+              fontSize: 12,
+              color: colors.onSurfaceVariant.withValues(alpha: .8),
+            ),
           ),
         ],
       ),
@@ -620,8 +653,14 @@ class _ChannelPlaceholder extends StatelessWidget {
 class _InlineChannelPlayer extends StatefulWidget {
   final Channel channel;
   final VoidCallback onFullscreen;
+  final ValueChanged<Future<void>> onDisposed;
 
-  const _InlineChannelPlayer({super.key, required this.channel, required this.onFullscreen});
+  const _InlineChannelPlayer({
+    super.key,
+    required this.channel,
+    required this.onFullscreen,
+    required this.onDisposed,
+  });
 
   @override
   State<_InlineChannelPlayer> createState() => _InlineChannelPlayerState();
@@ -641,7 +680,7 @@ class _InlineChannelPlayerState extends State<_InlineChannelPlayer> {
 
   @override
   void dispose() {
-    _player.dispose();
+    widget.onDisposed(_player.dispose());
     super.dispose();
   }
 
@@ -670,7 +709,10 @@ class _InlineChannelPlayerState extends State<_InlineChannelPlayer> {
                     'Clique 2x no canal para tela cheia · Voltar retorna',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: .55)),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: .55),
+                    ),
                   ),
                 ),
                 IconButton(
@@ -686,7 +728,12 @@ class _InlineChannelPlayerState extends State<_InlineChannelPlayer> {
               onDoubleTap: widget.onFullscreen,
               // Android/Fire TV: the built-in controls aren't reachable with a
               // remote and would swallow the double tap.
-              child: Video(controller: _controller, controls: Platform.isAndroid ? NoVideoControls : AdaptiveVideoControls),
+              child: Video(
+                controller: _controller,
+                controls: Platform.isAndroid
+                    ? NoVideoControls
+                    : AdaptiveVideoControls,
+              ),
             ),
           ),
         ],
