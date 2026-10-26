@@ -4,14 +4,16 @@
 
 #include "data/storage.hpp"
 
-// Fase 1 — tela de login (Xtream/M3U). Ver `data/auth_repository.hpp` pro
-// fluxo de fallback auto -> Xtream -> M3U (porte de `AuthContext.tsx`).
+// Tela para adicionar ou editar uma lista (Xtream/M3U). Ver
+// `data/auth_repository.hpp` pro fluxo de fallback auto -> Xtream -> M3U.
 class LoginActivity : public brls::Activity {
   public:
     // `prefill` pré-preenche os campos (ex.: ao deslogar, sem PIN pra
     // recuperar as credenciais depois, digitar tudo de novo do zero seria
     // bem chato) — sem credenciais salvas, os campos começam vazios.
-    explicit LoginActivity(std::optional<iptv::StoredAuth> prefill = std::nullopt);
+    // `editing`: a lista de `prefill` é atualizada (mesmo id) em vez de
+    // criar uma nova.
+    explicit LoginActivity(std::optional<iptv::StoredAuth> prefill = std::nullopt, bool editing = false);
 
     CONTENT_FROM_XML_RES("activity/login.xml");
 
@@ -19,6 +21,7 @@ class LoginActivity : public brls::Activity {
 
   private:
     BRLS_BIND(brls::Label, errorLabel, "errorLabel");
+    BRLS_BIND(brls::InputCell, listNameCell, "listName");
     BRLS_BIND(brls::SelectorCell, formModeCell, "formMode");
     BRLS_BIND(brls::InputCell, serverUrlCell, "serverUrl");
     BRLS_BIND(brls::InputCell, usernameCell, "username");
@@ -26,6 +29,8 @@ class LoginActivity : public brls::Activity {
     BRLS_BIND(brls::Button, loginButton, "loginButton");
 
     int formModeIndex = 0;
+    std::string listName;
+    std::string editingListId;
     std::string serverUrl;
     std::string username;
     std::string password;

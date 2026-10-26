@@ -65,9 +65,16 @@ int main(int argc, char* argv[]) {
         dark.addColor("brls/slider/line_filled", jotacRed);
     }
 
+    // Abre a lista conectada; sem nenhuma conectada, a primeira salva; sem
+    // nenhuma salva, a tela de adicionar lista.
     iptv::StoredAuth restoredAuth;
+    std::vector<iptv::StoredAuth> savedLists = iptv::loadLists();
     if (iptv::tryRestoreAuth(restoredAuth)) {
         brls::Application::pushActivity(new CatalogActivity(restoredAuth));
+    } else if (!savedLists.empty()) {
+        iptv::StoredAuth first = savedLists.front();
+        iptv::saveAuth(first);
+        brls::Application::pushActivity(new CatalogActivity(first));
     } else {
         brls::Application::pushActivity(new LoginActivity());
     }

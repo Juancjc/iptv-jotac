@@ -8,8 +8,10 @@ const std::vector<std::string> kFormModeOptions = {"Automático", "Xtream", "M3U
 const std::string kSuggestedM3uUrl = "https://iptv-org.github.io/iptv/languages/por.m3u";
 }
 
-LoginActivity::LoginActivity(std::optional<iptv::StoredAuth> prefill) {
+LoginActivity::LoginActivity(std::optional<iptv::StoredAuth> prefill, bool editing) {
     if (!prefill) return;
+    listName = prefill->listName;
+    if (editing) editingListId = prefill->listId;
     if (prefill->mode == iptv::AuthMode::M3u) {
         formModeIndex = 2;
         // No modo M3U o campo de URL do servidor é o próprio link da
@@ -24,6 +26,10 @@ LoginActivity::LoginActivity(std::optional<iptv::StoredAuth> prefill) {
 }
 
 void LoginActivity::onContentAvailable() {
+    listNameCell->init(
+        "Nome da lista", listName, [this](std::string text) { listName = text; }, "Minha lista",
+        "Nome que aparece na aba Listas");
+
     formModeCell->init(
         "Modo de login", kFormModeOptions, formModeIndex, [](int) {},
         [this](int selected) {
@@ -48,6 +54,7 @@ void LoginActivity::onContentAvailable() {
     passwordCell->init(
         "Senha", password, [this](std::string text) { password = text; }, "senha");
 
+    if (!editingListId.empty()) loginButton->setText("Salvar e conectar");
     loginButton->registerClickAction([this](brls::View* view) {
         submitLogin();
         return true;
@@ -91,6 +98,8 @@ void LoginActivity::submitLogin() {
     input.serverUrl = serverUrl;
     input.username = username;
     input.password = password;
+    input.listName = listName;
+    input.listId = editingListId;
     switch (formModeIndex) {
         case 1:
             input.formMode = iptv::LoginFormMode::Xtream;

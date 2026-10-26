@@ -1,5 +1,7 @@
 #include "data/catalog_repository.hpp"
 
+#include <mutex>
+
 #include "data/http_client.hpp"
 #include "data/text_utils.hpp"
 #include "data/xtream_client.hpp"
@@ -145,7 +147,15 @@ ItemsResult fetchItems(const Credentials& creds, ContentTab tab, const std::stri
     return result;
 }
 
-M3uCatalogResult fetchM3uCatalog(const std::string& m3uUrl) {
+M3uCatalogResult fetchM3uCatalog(const std::string& m3uUrl, bool refresh) {
+    // Um único lock durante o download: se as três abas pedirem a mesma
+    // playlist ao mesmo tempo, só a primeira baixa e as outras usam o cache.
+    static std::mutex mutex;
+    static std::string cachedUrl;
+    static M3uCatalogResult cached;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!refresh && cached.ok && cachedUrl == m3uUrl) return cached;
+
     M3uCatalogResult result;
     HttpResponse response = httpGet(m3uUrl);
     if (!response.ok) {
@@ -154,6 +164,8 @@ M3uCatalogResult fetchM3uCatalog(const std::string& m3uUrl) {
     }
     result.categories = parseM3u(response.body);
     result.ok = true;
+    cachedUrl = m3uUrl;
+    cached = result;
     return result;
 }
 

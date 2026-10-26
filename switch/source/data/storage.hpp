@@ -13,15 +13,27 @@ namespace iptv {
 enum class AuthMode { Xtream, M3u };
 
 // Mesmos nomes de campo (camelCase) de `storage.ts`'s `StoredAuth`.
+// `listId`/`listName` identificam a lista na aba "Listas" (como no IPTV
+// Jotac, várias listas podem ficar salvas; só uma fica conectada).
 struct StoredAuth {
     AuthMode mode = AuthMode::Xtream;
     Credentials credentials;
     std::string m3uUrl;  // só quando mode == M3u
+    std::string listId;
+    std::string listName;
 };
 
-void saveAuth(const StoredAuth& auth);
+// Salva a lista (criando `listId` se vier vazio) e a marca como conectada.
+void saveAuth(StoredAuth& auth);
 std::optional<StoredAuth> loadAuth();
 void clearAuth();
+
+// Todas as listas salvas, na ordem em que foram adicionadas.
+std::vector<StoredAuth> loadLists();
+// Salva/atualiza a lista sem mudar qual está conectada.
+void upsertList(StoredAuth& auth);
+// Remove a lista; se era a conectada, nenhuma fica conectada.
+void removeList(const std::string& listId);
 
 // Porte de `FavoriteItem`/`HistoryEntry` de `storage.ts` — mesmos nomes de
 // campo (camelCase) do formato usado nos outros clientes do projeto.

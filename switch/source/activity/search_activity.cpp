@@ -10,8 +10,9 @@
 SearchActivity::SearchActivity(iptv::StoredAuth auth,
                                 std::function<void(iptv::CatalogItem, std::vector<iptv::CatalogItem>)> onSelect)
     : auth(std::move(auth)), isM3u(this->auth.mode == iptv::AuthMode::M3u), onSelect(std::move(onSelect)) {
-    sectionLabels = isM3u ? std::vector<std::string>{"Resultados"}
-                          : std::vector<std::string>{"Ao Vivo", "Filmes", "Séries"};
+    // Mesmas seções nos dois modos: o M3U também é separado em
+    // canais/filmes/séries (ver m3u_parser).
+    sectionLabels = std::vector<std::string>{"TV ao vivo", "Filmes", "Séries"};
     allByTab.resize(sectionLabels.size());
     allByTabLoaded.assign(sectionLabels.size(), false);
     filteredByTab.resize(sectionLabels.size());
@@ -101,12 +102,13 @@ void SearchActivity::loadThenFilter() {
             brls::sync([this, aliveFlag, result]() {
                 if (!*aliveFlag) return;
                 if (result.ok) {
-                    std::vector<iptv::CatalogItem> flat;
+                    // Índice da seção = mesma ordem de `sectionLabels`.
+                    for (auto& section : allByTab) section.clear();
                     for (const auto& cat : result.categories) {
-                        flat.insert(flat.end(), cat.channels.begin(), cat.channels.end());
+                        auto& target = allByTab[static_cast<size_t>(cat.section)];
+                        target.insert(target.end(), cat.channels.begin(), cat.channels.end());
                     }
-                    allByTab[0] = std::move(flat);
-                    allByTabLoaded[0] = true;
+                    allByTabLoaded.assign(allByTabLoaded.size(), true);
                 }
                 applyFilter();
             });

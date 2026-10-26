@@ -38,8 +38,9 @@ struct M3uCatalogResult {
 };
 
 // Busca e faz o parse da playlist inteira de uma vez (M3U não tem endpoints
-// separados por categoria como o Xtream) — quem chama deve cachear o
-// resultado, igual `m3uCategories` no `CatalogContext.tsx`.
-M3uCatalogResult fetchM3uCatalog(const std::string& m3uUrl);
+// separados por categoria como o Xtream). O resultado fica em cache por URL,
+// já que as abas TV ao vivo/Filmes/Séries vêm da mesma playlist;
+// `refresh` força baixar de novo. Seguro de chamar de várias threads.
+M3uCatalogResult fetchM3uCatalog(const std::string& m3uUrl, bool refresh = false);
 
 }  // namespace iptv

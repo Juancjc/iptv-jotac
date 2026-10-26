@@ -9,9 +9,9 @@
 #include "data/storage.hpp"
 #include "data/updater.hpp"
 
-// Tela principal pós-login — `brls::TabFrame` padrão (barra lateral própria
-// com as abas: Ao Vivo/Filmes/Séries ou Categorias, no modo M3U, +
-// Favoritos/Histórico) e o painel da aba atual ao lado.
+// Tela principal — `brls::TabFrame` padrão (barra lateral própria com as
+// abas do IPTV Jotac: TV ao vivo/Filmes/Séries/Favoritos/Assistidos/Listas)
+// e o painel da aba atual ao lado.
 class CatalogActivity : public brls::Activity {
   public:
     explicit CatalogActivity(iptv::StoredAuth auth);
@@ -25,7 +25,6 @@ class CatalogActivity : public brls::Activity {
     brls::TabFrame* tabFrame = nullptr;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
 
-    void logout();
     void triggerSearch();
     void showAbout();
     std::function<void(iptv::CatalogItem, std::vector<iptv::CatalogItem>)> buildOnSelect();

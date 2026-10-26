@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
 
 #include "data/text_utils.hpp"
@@ -32,6 +33,114 @@ struct PendingChannel {
     std::string logo;
     std::string group;
 };
+
+bool isDigit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+// Lê de 1 a `maxDigits` dígitos a partir de `pos`; devolve quantos leu.
+size_t readNumber(const std::string& s, size_t pos, size_t maxDigits, int& value) {
+    size_t count = 0;
+    value = 0;
+    while (pos + count < s.size() && count < maxDigits && isDigit(s[pos + count])) {
+        value = value * 10 + (s[pos + count] - '0');
+        count++;
+    }
+    return count;
+}
+
+struct SeasonEpisode {
+    bool found = false;
+    size_t start = 0;
+};
+
+// Procura "S01E02"/"S1 E2" ou "1x02" no nome — equivalente ao regex
+// `(?:S(\d{1,2})\s*E(\d{1,3}))|(?:(\d{1,2})x(\d{1,3}))` do app Flutter,
+// escrito à mão porque std::regex é lento demais pra listas grandes.
+SeasonEpisode findSeasonEpisode(const std::string& name) {
+    for (size_t i = 0; i < name.size(); i++) {
+        char c = name[i];
+        int value = 0;
+        if (c == 'S' || c == 's') {
+            // Tenta com 2 e depois 1 dígito de temporada, como o regex faria.
+            for (size_t digits = 2; digits >= 1; digits--) {
+                size_t read = readNumber(name, i + 1, digits, value);
+                if (read != digits) continue;
+                size_t j = i + 1 + read;
+                while (j < name.size() && (name[j] == ' ' || name[j] == '\t')) j++;
+                if (j < name.size() && (name[j] == 'E' || name[j] == 'e') && readNumber(name, j + 1, 3, value) > 0) {
+                    return {true, i};
+                }
+            }
+        }
+        if (isDigit(c)) {
+            for (size_t digits = 2; digits >= 1; digits--) {
+                size_t read = readNumber(name, i, digits, value);
+                if (read != digits) continue;
+                size_t j = i + read;
+                if (j < name.size() && name[j] == 'x' && readNumber(name, j + 1, 3, value) > 0) {
+                    return {true, i};
+                }
+            }
+        }
+    }
+    return {};
+}
+
+std::string toLowerAscii(std::string s) {
+    for (char& c : s) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return s;
+}
+
+// Extensão do arquivo no fim da URL (ignorando a query string).
+std::string urlExtension(const std::string& url) {
+    std::string path = url.substr(0, url.find('?'));
+    size_t dot = path.find_last_of('.');
+    size_t slash = path.find_last_of('/');
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return "";
+    std::string ext = toLowerAscii(path.substr(dot + 1));
+    for (char c : ext) {
+        if (!((c >= 'a' && c <= 'z') || isDigit(c))) return "";
+    }
+    return ext;
+}
+
+struct M3uClassification {
+    M3uSection section = M3uSection::Live;
+    std::string extension;
+    std::string seriesTitle;
+};
+
+M3uClassification classifyEntry(const PendingChannel& info, const std::string& url) {
+    M3uClassification result;
+    result.extension = urlExtension(url);
+    std::string group = toLowerAscii(info.group);
+
+    // No app Flutter o grupo "Séries" só marca a entrada como candidata; ela
+    // só vira episódio se o nome tiver o marcador de temporada/episódio.
+    SeasonEpisode marker = findSeasonEpisode(info.name);
+    if (marker.found) {
+        std::string title = trim(info.name.substr(0, marker.start));
+        while (!title.empty() && (title.back() == '-' || title.back() == '_')) title.pop_back();
+        title = trim(title);
+        result.section = M3uSection::Series;
+        result.seriesTitle = title.empty() ? info.name : title;
+        return result;
+    }
+
+    static const char* const kVodExtensions[] = {"mp4", "mkv", "avi", "m4v", "mov", "wmv"};
+    bool isVodExtension = false;
+    for (const char* ext : kVodExtensions) {
+        if (result.extension == ext) isVodExtension = true;
+    }
+    if (isVodExtension || group.find("filme") != std::string::npos || group.find("movie") != std::string::npos ||
+        group.find("vod") != std::string::npos) {
+        result.section = M3uSection::Movies;
+    }
+    return result;
+}
 
 }  // namespace
 
@@ -70,26 +179,48 @@ std::vector<M3uCategory> parseM3u(const std::string& text) {
     }
 
     std::vector<M3uCategory> result;
+    // (aba, categoria) -> posição em `result`. Listas grandes têm centenas de
+    // milhares de entradas; procurar a categoria linearmente a cada uma
+    // deixava o carregamento muito lento.
+    std::unordered_map<std::string, size_t> indexByKey;
     for (auto& entry : channels) {
         const PendingChannel& info = entry.first;
         const std::string& url = entry.second;
+        const M3uClassification classification = classifyEntry(info, url);
 
-        auto it = std::find_if(result.begin(), result.end(),
-                                [&](const M3uCategory& c) { return c.name == info.group; });
-        if (it == result.end()) {
-            result.push_back(M3uCategory{info.group, {}});
-            it = result.end() - 1;
+        const std::string& categoryName = classification.section == M3uSection::Series ? classification.seriesTitle
+                                                                                         : info.group;
+        std::string key = std::to_string(static_cast<int>(classification.section)) + '\n' + categoryName;
+        auto found = indexByKey.find(key);
+        size_t index;
+        if (found == indexByKey.end()) {
+            index = result.size();
+            indexByKey.emplace(std::move(key), index);
+            result.push_back(M3uCategory{categoryName, classification.section, {}});
+        } else {
+            index = found->second;
         }
 
         CatalogItem item;
         item.id = "m3u-" + url;
-        item.kind = ContentKind::Live;
+        switch (classification.section) {
+            case M3uSection::Live:
+                item.kind = ContentKind::Live;
+                break;
+            case M3uSection::Movies:
+                item.kind = ContentKind::Vod;
+                break;
+            case M3uSection::Series:
+                item.kind = ContentKind::Episode;
+                break;
+        }
         item.name = info.name;
         item.logo = info.logo;
-        item.categoryId = info.group;
-        item.categoryName = info.group;
+        item.categoryId = categoryName;
+        item.categoryName = categoryName;
+        item.containerExtension = classification.extension;
         item.m3uUrl = url;
-        it->channels.push_back(std::move(item));
+        result[index].channels.push_back(std::move(item));
     }
     return result;
 }

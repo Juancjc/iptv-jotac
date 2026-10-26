@@ -11,6 +11,12 @@ std::string trim(const std::string& s) {
     return s.substr(start, end - start + 1);
 }
 
+void saveLoggedIn(const LoginInput& input, StoredAuth& auth) {
+    auth.listId = input.listId;
+    auth.listName = trim(input.listName);
+    saveAuth(auth);
+}
+
 }  // namespace
 
 LoginOutcome performLogin(const LoginInput& input) {
@@ -30,7 +36,7 @@ LoginOutcome performLogin(const LoginInput& input) {
         outcome.auth.mode = AuthMode::M3u;
         outcome.auth.credentials = credentials;
         outcome.auth.m3uUrl = credentials.serverUrl;
-        saveAuth(outcome.auth);
+        saveLoggedIn(input, outcome.auth);
         outcome.ok = true;
         return outcome;
     }
@@ -40,7 +46,7 @@ LoginOutcome performLogin(const LoginInput& input) {
         if (result.ok) {
             outcome.auth.mode = AuthMode::Xtream;
             outcome.auth.credentials = credentials;
-            saveAuth(outcome.auth);
+            saveLoggedIn(input, outcome.auth);
             outcome.ok = true;
             return outcome;
         }
@@ -61,7 +67,7 @@ LoginOutcome performLogin(const LoginInput& input) {
     outcome.auth.mode = AuthMode::M3u;
     outcome.auth.credentials = credentials;
     outcome.auth.m3uUrl = m3uUrl;
-    saveAuth(outcome.auth);
+    saveLoggedIn(input, outcome.auth);
     outcome.ok = true;
     return outcome;
 }

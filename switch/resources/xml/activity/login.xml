@@ -32,6 +32,10 @@
                 marginBottom="20"
                 visibility="gone" />
 
+            <brls:InputCell
+                id="listName"
+                type="text" />
+
             <brls:SelectorCell
                 id="formMode" />
 

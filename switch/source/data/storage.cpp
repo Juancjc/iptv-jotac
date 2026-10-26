@@ -1,6 +1,7 @@
 #include "data/storage.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <sys/stat.h>
 
@@ -138,9 +139,9 @@ HistoryEntry historyEntryFromJson(const nlohmann::json& j) {
     return entry;
 }
 
-void saveAuth(const StoredAuth& auth) {
-    nlohmann::json root = loadRoot();
+namespace {
 
+nlohmann::json authToJson(const StoredAuth& auth) {
     nlohmann::json j;
     j["mode"] = auth.mode == AuthMode::Xtream ? "xtream" : "m3u";
     j["credentials"] = {
@@ -151,17 +152,13 @@ void saveAuth(const StoredAuth& auth) {
     if (auth.mode == AuthMode::M3u) {
         j["m3uUrl"] = auth.m3uUrl;
     }
-    root["auth"] = j;
-    saveRoot(root);
+    j["listId"] = auth.listId;
+    j["listName"] = auth.listName;
+    return j;
 }
 
-std::optional<StoredAuth> loadAuth() {
-    nlohmann::json root = loadRoot();
-    auto it = root.find("auth");
-    if (it == root.end() || !it->is_object()) return std::nullopt;
-    const nlohmann::json& j = *it;
-
-    if (!j.contains("mode") || !j.contains("credentials")) return std::nullopt;
+std::optional<StoredAuth> authFromJson(const nlohmann::json& j) {
+    if (!j.is_object() || !j.contains("mode") || !j.contains("credentials")) return std::nullopt;
 
     StoredAuth auth;
     auth.mode = j["mode"].get<std::string>() == "m3u" ? AuthMode::M3u : AuthMode::Xtream;
@@ -170,12 +167,118 @@ std::optional<StoredAuth> loadAuth() {
     auth.credentials.username = creds.value("username", "");
     auth.credentials.password = creds.value("password", "");
     auth.m3uUrl = j.value("m3uUrl", "");
+    auth.listId = j.value("listId", "");
+    auth.listName = j.value("listName", "");
     return auth;
 }
 
-void clearAuth() {
+std::string newListId() {
+    return "list-" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+}
+
+std::string defaultListName(const StoredAuth& auth, size_t position) {
+    return (auth.mode == AuthMode::M3u ? "Lista M3U " : "Lista Xtream ") + std::to_string(position);
+}
+
+std::vector<StoredAuth> listsFromRoot(const nlohmann::json& root) {
+    std::vector<StoredAuth> lists;
+    auto it = root.find("lists");
+    if (it != root.end() && it->is_array()) {
+        for (const auto& entry : *it) {
+            if (auto auth = authFromJson(entry)) lists.push_back(*auth);
+        }
+    }
+    return lists;
+}
+
+void writeLists(nlohmann::json& root, const std::vector<StoredAuth>& lists) {
+    nlohmann::json array = nlohmann::json::array();
+    for (const auto& auth : lists) array.push_back(authToJson(auth));
+    root["lists"] = array;
+}
+
+// Dados de versões antigas só tinham a sessão única em `auth`: ela vira a
+// primeira lista salva. Grava na hora para o id gerado ficar estável.
+nlohmann::json loadMigratedRoot() {
     nlohmann::json root = loadRoot();
+    if (root.contains("lists")) return root;
+    auto authIt = root.find("auth");
+    if (authIt == root.end()) return root;
+    auto auth = authFromJson(*authIt);
+    if (!auth) return root;
+    if (auth->listId.empty()) auth->listId = newListId();
+    if (auth->listName.empty()) auth->listName = defaultListName(*auth, 1);
+    root["auth"] = authToJson(*auth);
+    writeLists(root, {*auth});
+    saveRoot(root);
+    return root;
+}
+
+void upsertInRoot(nlohmann::json& root, StoredAuth& auth) {
+    std::vector<StoredAuth> lists = listsFromRoot(root);
+    if (auth.listId.empty()) auth.listId = newListId();
+    auto it = std::find_if(lists.begin(), lists.end(), [&](const StoredAuth& l) { return l.listId == auth.listId; });
+    if (auth.listName.empty()) {
+        size_t position = it == lists.end() ? lists.size() + 1 : static_cast<size_t>(it - lists.begin()) + 1;
+        auth.listName = defaultListName(auth, position);
+    }
+    if (it == lists.end()) {
+        lists.push_back(auth);
+    } else {
+        *it = auth;
+    }
+    writeLists(root, lists);
+}
+
+}  // namespace
+
+void saveAuth(StoredAuth& auth) {
+    nlohmann::json root = loadMigratedRoot();
+    upsertInRoot(root, auth);
+    root["auth"] = authToJson(auth);
+    saveRoot(root);
+}
+
+std::optional<StoredAuth> loadAuth() {
+    nlohmann::json root = loadMigratedRoot();
+    auto it = root.find("auth");
+    if (it == root.end()) return std::nullopt;
+    return authFromJson(*it);
+}
+
+void clearAuth() {
+    nlohmann::json root = loadMigratedRoot();
     root.erase("auth");
+    saveRoot(root);
+}
+
+std::vector<StoredAuth> loadLists() {
+    return listsFromRoot(loadMigratedRoot());
+}
+
+void upsertList(StoredAuth& auth) {
+    nlohmann::json root = loadMigratedRoot();
+    upsertInRoot(root, auth);
+    // Se a lista editada é a conectada, a sessão ativa recebe os dados novos.
+    auto active = root.find("auth");
+    if (active != root.end()) {
+        auto activeAuth = authFromJson(*active);
+        if (activeAuth && activeAuth->listId == auth.listId) root["auth"] = authToJson(auth);
+    }
+    saveRoot(root);
+}
+
+void removeList(const std::string& listId) {
+    nlohmann::json root = loadMigratedRoot();
+    std::vector<StoredAuth> lists = listsFromRoot(root);
+    lists.erase(std::remove_if(lists.begin(), lists.end(), [&](const StoredAuth& l) { return l.listId == listId; }),
+                lists.end());
+    writeLists(root, lists);
+    auto active = root.find("auth");
+    if (active != root.end()) {
+        auto activeAuth = authFromJson(*active);
+        if (!activeAuth || activeAuth->listId == listId) root.erase("auth");
+    }
     saveRoot(root);
 }
 

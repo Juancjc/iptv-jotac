@@ -18,6 +18,10 @@ struct LoginInput {
     std::string username;
     std::string password;
     LoginFormMode formMode = LoginFormMode::Auto;
+    // Nome mostrado na aba "Listas"; vazio = nome automático.
+    std::string listName;
+    // Preenchido ao editar uma lista existente (vazio = lista nova).
+    std::string listId;
 };
 
 struct LoginOutcome {

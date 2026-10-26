@@ -77,15 +77,15 @@ CatalogContentView::CatalogContentView(iptv::StoredAuth auth, iptv::ContentTab t
     headerBox->addView(statusBox);
     this->addView(headerBox);
 
-    // Linha com as colunas de categorias (esquerda) + itens (direita).
+    // Uma lista por vez: categorias OU itens da categoria aberta, cada uma
+    // ocupando a largura toda.
     contentRow = new brls::Box();
     contentRow->setAxis(brls::Axis::ROW);
     contentRow->setGrow(1.0f);
 
-    // Coluna da esquerda: categorias.
-    brls::Box* categoriesBox = new brls::Box();
+    categoriesBox = new brls::Box();
     categoriesBox->setAxis(brls::Axis::COLUMN);
-    categoriesBox->setWidth(280);
+    categoriesBox->setGrow(1.0f);
 
     brls::Box* categoriesStatusRow = new brls::Box();
     categoriesStatusRow->setAxis(brls::Axis::ROW);
@@ -116,11 +116,25 @@ CatalogContentView::CatalogContentView(iptv::StoredAuth auth, iptv::ContentTab t
     categoriesBox->addView(categoriesRecycler);
     contentRow->addView(categoriesBox);
 
-    // Coluna da direita: grade de pôsteres da categoria selecionada.
-    brls::Box* itemsBox = new brls::Box();
+    // Itens da categoria aberta (grade de pôsteres), escondidos até abrir uma.
+    itemsBox = new brls::Box();
     itemsBox->setAxis(brls::Axis::COLUMN);
     itemsBox->setGrow(1.0f);
     itemsBox->setPadding(10, 10, 10, 10);
+    itemsBox->setVisibility(brls::Visibility::GONE);
+    itemsBox->registerAction("Voltar", brls::BUTTON_B, [this](brls::View*) {
+        showCategories();
+        return true;
+    });
+
+    backButton = (brls::Button*)brls::Button::create();
+    backButton->setText("Voltar para todas as listas");
+    backButton->setMarginBottom(10);
+    backButton->registerClickAction([this](brls::View*) {
+        showCategories();
+        return true;
+    });
+    itemsBox->addView(backButton);
 
     brls::Box* itemsStatusRow = new brls::Box();
     itemsStatusRow->setAxis(brls::Axis::ROW);
@@ -149,7 +163,7 @@ CatalogContentView::CatalogContentView(iptv::StoredAuth auth, iptv::ContentTab t
 
     this->addView(contentRow);
 
-    setItemsStatus("Selecione uma categoria à esquerda.");
+    setItemsStatus("");
     loadCategories();
     updateClock();
 }
@@ -189,11 +203,20 @@ void CatalogContentView::loadCategories() {
     // borealis usa em `Image::setImageAsync` pra não tocar `this` depois de
     // destruído.
     if (isM3u) {
+        // A mesma playlist alimenta as três abas; cada uma só mostra as
+        // categorias da sua seção (canais, filmes ou séries).
+        iptv::M3uSection section = iptv::M3uSection::Live;
+        if (tab == iptv::ContentTab::Vod) section = iptv::M3uSection::Movies;
+        if (tab == iptv::ContentTab::Series) section = iptv::M3uSection::Series;
         std::string m3uUrl = auth.m3uUrl;
         ASYNC_RETAIN
-        brls::async([ASYNC_TOKEN, m3uUrl]() {
+        brls::async([ASYNC_TOKEN, m3uUrl, section]() {
             iptv::M3uCatalogResult result = iptv::fetchM3uCatalog(m3uUrl);
-            brls::sync([ASYNC_TOKEN, result]() {
+            std::vector<iptv::M3uCategory> sectionCategories;
+            for (const auto& cat : result.categories) {
+                if (cat.section == section) sectionCategories.push_back(cat);
+            }
+            brls::sync([ASYNC_TOKEN, result, sectionCategories]() {
                 ASYNC_RELEASE
                 categoriesSpinner->setVisibility(brls::Visibility::GONE);
                 if (!result.ok) {
@@ -201,8 +224,12 @@ void CatalogContentView::loadCategories() {
                     setItemsStatus(result.error);
                     return;
                 }
-                categoriesStatusLabel->setVisibility(brls::Visibility::GONE);
-                m3uCache = result.categories;
+                if (sectionCategories.empty()) {
+                    categoriesStatusLabel->setText("Nada por aqui nesta lista.");
+                } else {
+                    categoriesStatusLabel->setVisibility(brls::Visibility::GONE);
+                }
+                m3uCache = sectionCategories;
                 categories.clear();
                 for (const auto& cat : m3uCache) {
                     categories.push_back(iptv::Category{cat.name, cat.name});
@@ -233,9 +260,25 @@ void CatalogContentView::loadCategories() {
     });
 }
 
+void CatalogContentView::showCategories() {
+    itemsBox->setVisibility(brls::Visibility::GONE);
+    categoriesBox->setVisibility(brls::Visibility::VISIBLE);
+    categoriesRecycler->setDefaultCellFocus(brls::IndexPath(0, openCategoryIndex));
+    brls::Application::giveFocus(categoriesRecycler);
+}
+
 void CatalogContentView::selectCategory(size_t index) {
     if (index >= categories.size()) return;
     const std::string categoryId = categories[index].id;
+
+    // Troca a lista de categorias pela de itens desta categoria.
+    openCategoryIndex = index;
+    backButton->setText("Voltar para todas as listas  |  " + categories[index].name);
+    items.clear();
+    itemsRecycler->reloadData();
+    categoriesBox->setVisibility(brls::Visibility::GONE);
+    itemsBox->setVisibility(brls::Visibility::VISIBLE);
+    brls::Application::giveFocus(backButton);
 
     if (isM3u) {
         for (const auto& cat : m3uCache) {

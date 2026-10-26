@@ -10,24 +10,13 @@
 #include "data/catalog_repository.hpp"
 #include "data/storage.hpp"
 #include "ui/catalog_content_view.hpp"
+#include "ui/lists_content_view.hpp"
 #include "ui/local_list_content_view.hpp"
 
 CatalogActivity::CatalogActivity(iptv::StoredAuth auth) : auth(std::move(auth)) {}
 
 CatalogActivity::~CatalogActivity() {
     *alive = false;
-}
-
-void CatalogActivity::logout() {
-    // Cópia obrigatória: `Application::clear()` deleta TODAS as Activities
-    // da pilha na hora — inclusive esta — então `this->auth` já não existe
-    // mais na linha seguinte ao clear().
-    iptv::StoredAuth authCopy = auth;
-    iptv::clearAuth();
-    brls::Application::clear();
-    // Sem PIN nesta versão, redigitar tudo do zero seria bem chato — leva as
-    // credenciais da sessão que acabou de sair já preenchidas no formulário.
-    brls::Application::pushActivity(new LoginActivity(authCopy));
 }
 
 std::function<void(iptv::CatalogItem, std::vector<iptv::CatalogItem>)> CatalogActivity::buildOnSelect() {
@@ -60,35 +49,32 @@ brls::View* CatalogActivity::createContentView() {
 
     tabFrame = new brls::TabFrame();
 
-    if (auth.mode == iptv::AuthMode::M3u) {
-        tabFrame->addTab("Categorias", [authCopy, onSelect]() {
-            return new CatalogContentView(authCopy, iptv::ContentTab::Live, onSelect);
-        });
-    } else {
-        tabFrame->addTab("Ao Vivo", [authCopy, onSelect]() {
-            return new CatalogContentView(authCopy, iptv::ContentTab::Live, onSelect);
-        });
-        tabFrame->addTab("Filmes", [authCopy, onSelect]() {
-            return new CatalogContentView(authCopy, iptv::ContentTab::Vod, onSelect);
-        });
-        tabFrame->addTab("Séries", [authCopy, onSelect]() {
-            return new CatalogContentView(authCopy, iptv::ContentTab::Series, onSelect);
-        });
-    }
+    // Mesmas abas do IPTV Jotac. No modo M3U a playlist é separada em
+    // canais/filmes/séries pelas mesmas regras do app (ver m3u_parser).
+    tabFrame->addTab("TV ao vivo", [authCopy, onSelect]() {
+        return new CatalogContentView(authCopy, iptv::ContentTab::Live, onSelect);
+    });
+    tabFrame->addTab("Filmes", [authCopy, onSelect]() {
+        return new CatalogContentView(authCopy, iptv::ContentTab::Vod, onSelect);
+    });
+    tabFrame->addTab("Séries", [authCopy, onSelect]() {
+        return new CatalogContentView(authCopy, iptv::ContentTab::Series, onSelect);
+    });
 
     tabFrame->addTab("Favoritos", [onSelect]() {
         return new LocalListContentView(
             iptv::loadFavorites(), onSelect, "Seus itens favoritos aparecem aqui.",
             [](const iptv::FavoriteItem& item) { iptv::toggleFavorite(item); }, "Desfavoritar", "Favoritos");
     });
-    tabFrame->addTab("Histórico", [onSelect]() {
+    tabFrame->addTab("Assistidos", [onSelect]() {
         auto history = iptv::loadHistory();
         std::vector<iptv::FavoriteItem> asFavorites(history.begin(), history.end());
         return new LocalListContentView(
             asFavorites, onSelect, "O que você assistiu aparece aqui.",
-            [](const iptv::FavoriteItem& item) { iptv::removeHistoryItem(item.id); }, "Remover do histórico",
-            "Histórico");
+            [](const iptv::FavoriteItem& item) { iptv::removeHistoryItem(item.id); }, "Remover dos assistidos",
+            "Assistidos");
     });
+    tabFrame->addTab("Listas", [authCopy]() { return new ListsContentView(authCopy); });
 
     tabFrame->setAboutAction("Sobre", [this]() { showAbout(); });
     tabFrame->setHintsText(
@@ -96,7 +82,6 @@ brls::View* CatalogActivity::createContentView() {
         "A - Selecionar\n"
         "B - Voltar\n"
         "X - FAV/DESFAV\n"
-        "Y - Deslogar\n"
         "R - Buscar\n"
         "+ - Fechar App");
 
@@ -104,10 +89,6 @@ brls::View* CatalogActivity::createContentView() {
 }
 
 void CatalogActivity::onContentAvailable() {
-    getContentView()->registerAction("Sair", brls::BUTTON_Y, [this](brls::View*) {
-        logout();
-        return true;
-    });
     getContentView()->registerAction("Buscar", brls::BUTTON_RB, [this](brls::View*) {
         triggerSearch();
         return true;
