@@ -42,16 +42,20 @@ class Playlist {
 
   Playlist copyWith({
     String? name,
+    String? m3uUrl,
+    String? xtreamHost,
+    String? xtreamUsername,
+    String? xtreamPassword,
     DateTime? lastSyncedAt,
   }) {
     return Playlist(
       id: id,
       name: name ?? this.name,
       type: type,
-      m3uUrl: m3uUrl,
-      xtreamHost: xtreamHost,
-      xtreamUsername: xtreamUsername,
-      xtreamPassword: xtreamPassword,
+      m3uUrl: m3uUrl ?? this.m3uUrl,
+      xtreamHost: xtreamHost ?? this.xtreamHost,
+      xtreamUsername: xtreamUsername ?? this.xtreamUsername,
+      xtreamPassword: xtreamPassword ?? this.xtreamPassword,
       createdAt: createdAt,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
     );

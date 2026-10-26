@@ -70,6 +70,23 @@ class PlaylistRepository {
     return _playlistFromRow(inserted);
   }
 
+  /// Persists edits to a playlist's name and source fields. Cached content
+  /// is left untouched; call [syncPlaylist] to fetch it again from the
+  /// (possibly new) source.
+  Future<Playlist> updatePlaylist(Playlist playlist) async {
+    await (_db.update(_db.playlists)..where((t) => t.id.equals(playlist.id))).write(
+      PlaylistsCompanion(
+        name: Value(playlist.name),
+        m3uUrl: Value(playlist.m3uUrl),
+        xtreamHost: Value(playlist.xtreamHost),
+        xtreamUsername: Value(playlist.xtreamUsername),
+        xtreamPassword: Value(playlist.xtreamPassword),
+      ),
+    );
+    final updated = await (_db.select(_db.playlists)..where((t) => t.id.equals(playlist.id))).getSingle();
+    return _playlistFromRow(updated);
+  }
+
   Future<void> removePlaylist(String playlistId) async {
     await _db.transaction(() async {
       await (_db.delete(_db.channels)..where((t) => t.playlistId.equals(playlistId))).go();

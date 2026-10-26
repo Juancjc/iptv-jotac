@@ -17,6 +17,27 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('updatePlaylist saves new name and Xtream credentials', () async {
+    final playlist = await repository.addXtreamPlaylist(
+      name: 'Antiga',
+      host: 'http://old.example.com:8080',
+      username: 'user',
+      password: 'pass',
+    );
+
+    final updated = await repository.updatePlaylist(
+      playlist.copyWith(name: 'Nova', xtreamHost: 'https://new.example.com', xtreamPassword: 'secret'),
+    );
+
+    expect(updated.id, playlist.id);
+    expect(updated.name, 'Nova');
+    expect(updated.type, PlaylistType.xtream);
+    expect(updated.xtreamHost, 'https://new.example.com');
+    expect(updated.xtreamUsername, 'user');
+    expect(updated.xtreamPassword, 'secret');
+    expect((await repository.watchPlaylists().first).single.name, 'Nova');
+  });
+
   test('removePlaylist deletes its content without affecting another list', () async {
     final now = DateTime(2026, 10, 9);
     await database.batch((batch) {

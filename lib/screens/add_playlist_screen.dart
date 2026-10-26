@@ -4,11 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../models/playlist.dart';
 import '../providers/database_provider.dart';
+import '../providers/playlist_providers.dart';
 import '../services/qr_pairing_server.dart';
 
+/// Dialog to register a new playlist or, when [playlist] is given, edit an
+/// existing one (name and source) and optionally fetch its content again.
 class AddPlaylistScreen extends ConsumerStatefulWidget {
-  const AddPlaylistScreen({super.key});
+  final Playlist? playlist;
+
+  const AddPlaylistScreen({super.key, this.playlist});
 
   @override
   ConsumerState<AddPlaylistScreen> createState() => _AddPlaylistScreenState();
@@ -28,12 +34,31 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
   final _xtreamPassController = TextEditingController();
 
   bool _submitting = false;
+  bool _syncAfterSave = true;
   String? _error;
+
+  bool get _isEditing => widget.playlist != null;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    final playlist = widget.playlist;
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: playlist?.type == PlaylistType.xtream ? 1 : 0,
+    );
+    if (playlist != null) {
+      if (playlist.type == PlaylistType.m3u) {
+        _m3uNameController.text = playlist.name;
+        _m3uUrlController.text = playlist.m3uUrl ?? '';
+      } else {
+        _xtreamNameController.text = playlist.name;
+        _xtreamHostController.text = playlist.xtreamHost ?? '';
+        _xtreamUserController.text = playlist.xtreamUsername ?? '';
+        _xtreamPassController.text = playlist.xtreamPassword ?? '';
+      }
+    }
   }
 
   @override
@@ -55,6 +80,13 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
       _error = null;
     });
     try {
+      final editing = widget.playlist;
+      if (editing != null) {
+        await _saveEdits(
+          editing.copyWith(name: _m3uNameController.text.trim(), m3uUrl: _m3uUrlController.text.trim()),
+        );
+        return;
+      }
       final repo = ref.read(playlistRepositoryProvider);
       final playlist = await repo.addM3uPlaylist(
         name: _m3uNameController.text.trim(),
@@ -76,6 +108,18 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
       _error = null;
     });
     try {
+      final editing = widget.playlist;
+      if (editing != null) {
+        await _saveEdits(
+          editing.copyWith(
+            name: _xtreamNameController.text.trim(),
+            xtreamHost: _xtreamHostController.text.trim(),
+            xtreamUsername: _xtreamUserController.text.trim(),
+            xtreamPassword: _xtreamPassController.text.trim(),
+          ),
+        );
+        return;
+      }
       final repo = ref.read(playlistRepositoryProvider);
       final playlist = await repo.addXtreamPlaylist(
         name: _xtreamNameController.text.trim(),
@@ -92,6 +136,14 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
     }
   }
 
+  Future<void> _saveEdits(Playlist edited) async {
+    final updated = await ref.read(playlistRepositoryProvider).updatePlaylist(edited);
+    if (_syncAfterSave) {
+      await ref.read(playlistSyncControllerProvider).sync(updated);
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -103,16 +155,17 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Adicionar lista', style: Theme.of(context).textTheme.titleLarge),
+              Text(_isEditing ? 'Editar lista' : 'Adicionar lista', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(text: 'URL M3U'),
-                  Tab(text: 'Xtream Codes'),
-                  Tab(icon: Icon(Icons.qr_code, size: 18), text: 'QR Code'),
-                ],
-              ),
+              if (!_isEditing)
+                TabBar(
+                  controller: _tabController,
+                  tabs: const [
+                    Tab(text: 'URL M3U'),
+                    Tab(text: 'Xtream Codes'),
+                    Tab(icon: Icon(Icons.qr_code, size: 18), text: 'QR Code'),
+                  ],
+                ),
               const SizedBox(height: 16),
               SizedBox(
                 height: 320,
@@ -132,6 +185,14 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
                   },
                 ),
               ),
+              if (_isEditing)
+                CheckboxListTile(
+                  value: _syncAfterSave,
+                  onChanged: _submitting ? null : (value) => setState(() => _syncAfterSave = value ?? true),
+                  title: const Text('Atualizar o conteudo da lista ao salvar'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -154,7 +215,7 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
                         onPressed: _submitting ? null : (_tabController.index == 0 ? _submitM3u : _submitXtream),
                         child: _submitting
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Adicionar'),
+                            : Text(_isEditing ? 'Salvar' : 'Adicionar'),
                       );
                     },
                   ),

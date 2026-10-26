@@ -8,6 +8,7 @@ import 'favorites_screen.dart';
 import 'home_dashboard_screen.dart';
 import 'live_tv_screen.dart';
 import 'movies_screen.dart';
+import 'playlists_screen.dart';
 import 'series_screen.dart';
 import 'settings_screen.dart';
 import 'watch_history_screen.dart';
@@ -51,6 +52,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       label: Text('Downloads'),
     ),
     NavigationRailDestination(
+      icon: Icon(Icons.playlist_play_outlined),
+      selectedIcon: Icon(Icons.playlist_play),
+      label: Text('Listas'),
+    ),
+    NavigationRailDestination(
       icon: Icon(Icons.settings_outlined),
       selectedIcon: Icon(Icons.settings),
       label: Text('Configuracoes'),
@@ -69,6 +75,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const FavoritesScreen(),
       const WatchHistoryScreen(),
       const DownloadsScreen(),
+      PlaylistsScreen(onConnected: () => _selectSection(0)),
       const SettingsScreen(),
     ];
 
@@ -104,11 +111,22 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       ),
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: _index,
-            onDestinationSelected: _selectSection,
-            labelType: NavigationRailLabelType.all,
-            destinations: _destinations,
+          // Scrollable so every section stays reachable on short screens
+          // (e.g. Fire TV renders at ~540dp tall).
+          LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: NavigationRail(
+                    selectedIndex: _index,
+                    onDestinationSelected: _selectSection,
+                    labelType: NavigationRailLabelType.all,
+                    destinations: _destinations,
+                  ),
+                ),
+              ),
+            ),
           ),
           const VerticalDivider(width: 1),
           Expanded(
