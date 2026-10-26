@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:shelf/shelf.dart' as shelf;
@@ -35,8 +36,15 @@ class PairingSubmission {
 /// Starts a tiny local HTTP server with a mobile-friendly form so a playlist
 /// can be typed on a phone (scanning a QR code with the URL) instead of with
 /// a TV remote control. Meant to be started only while the "QR Code" tab of
-/// the add-playlist screen is visible, and stopped as soon as it is left.
+/// the add/edit playlist screen is visible, and stopped as soon as it is left.
 class QrPairingServer {
+  /// When set, the form edits this existing playlist: fields come prefilled
+  /// (except the Xtream password, which is never sent over the plain-HTTP
+  /// page; leaving it blank keeps [initial]'s password) and the type is fixed.
+  final PairingSubmission? initial;
+
+  QrPairingServer({this.initial});
+
   HttpServer? _server;
   final _submissions = StreamController<PairingSubmission>.broadcast();
 
@@ -103,14 +111,15 @@ class QrPairingServer {
   }
 
   Future<shelf.Response> _handle(shelf.Request request) async {
+    final initial = this.initial;
     if (request.method == 'GET') {
-      return shelf.Response.ok(_formHtml, headers: _htmlHeaders);
+      return shelf.Response.ok(_formHtml(), headers: _htmlHeaders);
     }
     if (request.method == 'POST') {
       final body = await request.readAsString();
       final fields = Uri.splitQueryString(body);
       final name = (fields['name'] ?? '').trim();
-      final type = fields['type'];
+      final type = initial == null ? fields['type'] : (initial.isXtream ? 'xtream' : 'm3u');
 
       if (name.isEmpty) {
         return shelf.Response.ok(_page('Informe um nome para a lista.', isError: true), headers: _htmlHeaders);
@@ -119,7 +128,8 @@ class QrPairingServer {
       if (type == 'xtream') {
         final host = (fields['host'] ?? '').trim();
         final user = (fields['user'] ?? '').trim();
-        final pass = (fields['pass'] ?? '').trim();
+        var pass = (fields['pass'] ?? '').trim();
+        if (pass.isEmpty && initial != null) pass = initial.xtreamPassword ?? '';
         if (host.isEmpty || user.isEmpty || pass.isEmpty) {
           return shelf.Response.ok(
             _page('Preencha host, usuario e senha.', isError: true),
@@ -137,7 +147,11 @@ class QrPairingServer {
       }
 
       return shelf.Response.ok(
-        _page('Lista enviada! Pode voltar para a TV, ela ja vai aparecer la.'),
+        _page(
+          initial == null
+              ? 'Lista enviada! Pode voltar para a TV, ela ja vai aparecer la.'
+              : 'Alteracoes enviadas! A TV vai salvar e atualizar a lista.',
+        ),
         headers: _htmlHeaders,
       );
     }
@@ -180,52 +194,64 @@ ${isError ? '<a class="btn" href="javascript:history.back()">Voltar</a>' : ''}
   .hidden{display:none}
   ''';
 
-  static final String _formHtml = '''
-<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IPTV Jotac - Adicionar lista</title>
-<style>$_sharedCss</style></head>
-<body>
-<div class="card">
-  <h1>Adicionar lista na TV</h1>
-  <form method="post" onsubmit="return prepareSubmit()">
+  static String _escape(String? value) => const HtmlEscape(HtmlEscapeMode.attribute).convert(value ?? '');
+
+  String _formHtml() {
+    final initial = this.initial;
+    final editing = initial != null;
+    final xtream = initial?.isXtream ?? false;
+    final typeSelector = editing
+        ? '<input type="hidden" name="type" value="${xtream ? 'xtream' : 'm3u'}">'
+        : '''
     <div class="seg">
       <label><input type="radio" name="type" value="m3u" checked onchange="toggleType()"><span>URL M3U</span></label>
       <label><input type="radio" name="type" value="xtream" onchange="toggleType()"><span>Xtream Codes</span></label>
-    </div>
+    </div>''';
+    return '''
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPTV Jotac - ${editing ? 'Editar' : 'Adicionar'} lista</title>
+<style>$_sharedCss</style></head>
+<body>
+<div class="card">
+  <h1>${editing ? 'Editar lista na TV' : 'Adicionar lista na TV'}</h1>
+  <form method="post" onsubmit="return prepareSubmit()">
+    $typeSelector
 
     <label for="name">Nome da lista</label>
-    <input id="name" name="name" type="text" required placeholder="Minha lista">
+    <input id="name" name="name" type="text" required placeholder="Minha lista" value="${_escape(initial?.name)}">
 
-    <div id="m3u-fields">
+    <div id="m3u-fields"${xtream ? ' class="hidden"' : ''}>
       <label for="url">URL do M3U/M3U8</label>
-      <input id="url" name="url" type="url" placeholder="http://exemplo.com/lista.m3u8">
+      <input id="url" name="url" type="url" placeholder="http://exemplo.com/lista.m3u8" value="${_escape(initial?.m3uUrl)}">
     </div>
 
-    <div id="xtream-fields" class="hidden">
+    <div id="xtream-fields"${xtream ? '' : ' class="hidden"'}>
       <label for="host">Host (http(s)://host:porta)</label>
-      <input id="host" name="host" type="text" placeholder="http://exemplo.com:8080">
+      <input id="host" name="host" type="text" placeholder="http://exemplo.com:8080" value="${_escape(initial?.xtreamHost)}">
       <label for="user">Usuario</label>
-      <input id="user" name="user" type="text">
+      <input id="user" name="user" type="text" value="${_escape(initial?.xtreamUsername)}">
       <label for="pass">Senha</label>
-      <input id="pass" name="pass" type="password">
+      <input id="pass" name="pass" type="password"${editing ? ' placeholder="Deixe em branco para manter a senha atual"' : ''}>
     </div>
 
-    <button class="btn" type="submit">Enviar para a TV</button>
+    <button class="btn" type="submit">${editing ? 'Salvar na TV' : 'Enviar para a TV'}</button>
   </form>
 </div>
 <script>
 function toggleType() {
-  var xtream = document.querySelector('input[name=type]:checked').value === 'xtream';
+  var xtream = document.querySelector('input[name=type]:checked, input[name=type][type=hidden]').value === 'xtream';
   document.getElementById('m3u-fields').classList.toggle('hidden', xtream);
   document.getElementById('xtream-fields').classList.toggle('hidden', !xtream);
   document.getElementById('url').required = !xtream;
   document.getElementById('host').required = xtream;
   document.getElementById('user').required = xtream;
-  document.getElementById('pass').required = xtream;
+  document.getElementById('pass').required = xtream && !$editing;
 }
+toggleType();
 function prepareSubmit() { return true; }
 </script>
 </body></html>''';
+  }
 }

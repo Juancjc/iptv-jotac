@@ -43,10 +43,10 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
   void initState() {
     super.initState();
     final playlist = widget.playlist;
+    // Adding: M3U / Xtream / QR. Editing: the playlist's own form / QR.
     _tabController = TabController(
-      length: 3,
+      length: playlist == null ? 3 : 2,
       vsync: this,
-      initialIndex: playlist?.type == PlaylistType.xtream ? 1 : 0,
     );
     if (playlist != null) {
       if (playlist.type == PlaylistType.m3u) {
@@ -136,6 +136,53 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
     }
   }
 
+  int get _qrTabIndex => _isEditing ? 1 : 2;
+
+  bool get _editingXtream => widget.playlist?.type == PlaylistType.xtream;
+
+  /// Phone submissions from the QR tab: registers a new playlist or applies
+  /// the edits to the playlist being edited.
+  Future<void> _handlePairingSubmission(PairingSubmission submission) async {
+    final editing = widget.playlist;
+    if (editing != null) {
+      await _saveEdits(
+        submission.isXtream
+            ? editing.copyWith(
+                name: submission.name,
+                xtreamHost: submission.xtreamHost,
+                xtreamUsername: submission.xtreamUsername,
+                xtreamPassword: submission.xtreamPassword,
+              )
+            : editing.copyWith(name: submission.name, m3uUrl: submission.m3uUrl),
+      );
+      return;
+    }
+    final repo = ref.read(playlistRepositoryProvider);
+    final playlist = submission.isXtream
+        ? await repo.addXtreamPlaylist(
+            name: submission.name,
+            host: submission.xtreamHost!,
+            username: submission.xtreamUsername!,
+            password: submission.xtreamPassword!,
+          )
+        : await repo.addM3uPlaylist(name: submission.name, url: submission.m3uUrl!);
+    await repo.syncPlaylist(playlist);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  PairingSubmission? get _pairingInitial {
+    final playlist = widget.playlist;
+    if (playlist == null) return null;
+    return playlist.type == PlaylistType.xtream
+        ? PairingSubmission.xtream(
+            name: playlist.name,
+            host: playlist.xtreamHost ?? '',
+            username: playlist.xtreamUsername ?? '',
+            password: playlist.xtreamPassword ?? '',
+          )
+        : PairingSubmission.m3u(name: playlist.name, url: playlist.m3uUrl ?? '');
+  }
+
   Future<void> _saveEdits(Playlist edited) async {
     final updated = await ref.read(playlistRepositoryProvider).updatePlaylist(edited);
     if (_syncAfterSave) {
@@ -157,31 +204,30 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             children: [
               Text(_isEditing ? 'Editar lista' : 'Adicionar lista', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              if (!_isEditing)
-                TabBar(
-                  controller: _tabController,
-                  tabs: const [
-                    Tab(text: 'URL M3U'),
-                    Tab(text: 'Xtream Codes'),
-                    Tab(icon: Icon(Icons.qr_code, size: 18), text: 'QR Code'),
-                  ],
-                ),
+              TabBar(
+                controller: _tabController,
+                tabs: _isEditing
+                    ? const [
+                        Tab(icon: Icon(Icons.tv, size: 18), text: 'Pela TV'),
+                        Tab(icon: Icon(Icons.qr_code, size: 18), text: 'Pelo celular'),
+                      ]
+                    : const [
+                        Tab(text: 'URL M3U'),
+                        Tab(text: 'Xtream Codes'),
+                        Tab(icon: Icon(Icons.qr_code, size: 18), text: 'QR Code'),
+                      ],
+              ),
               const SizedBox(height: 16),
               SizedBox(
                 height: 320,
                 child: AnimatedBuilder(
                   animation: _tabController,
                   builder: (context, _) {
-                    switch (_tabController.index) {
-                      case 0:
-                        return _buildM3uForm();
-                      case 1:
-                        return _buildXtreamForm();
-                      default:
-                        return _QrPairingTab(onAdded: () {
-                          if (mounted) Navigator.of(context).pop();
-                        });
+                    if (_tabController.index == _qrTabIndex) {
+                      return _QrPairingTab(initial: _pairingInitial, onSubmission: _handlePairingSubmission);
                     }
+                    if (_isEditing) return _editingXtream ? _buildXtreamForm() : _buildM3uForm();
+                    return _tabController.index == 0 ? _buildM3uForm() : _buildXtreamForm();
                   },
                 ),
               ),
@@ -210,9 +256,10 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
                   AnimatedBuilder(
                     animation: _tabController,
                     builder: (context, _) {
-                      if (_tabController.index == 2) return const SizedBox.shrink();
+                      if (_tabController.index == _qrTabIndex) return const SizedBox.shrink();
+                      final submitXtream = _isEditing ? _editingXtream : _tabController.index == 1;
                       return FilledButton(
-                        onPressed: _submitting ? null : (_tabController.index == 0 ? _submitM3u : _submitXtream),
+                        onPressed: _submitting ? null : (submitXtream ? _submitXtream : _submitM3u),
                         child: _submitting
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                             : Text(_isEditing ? 'Salvar' : 'Adicionar'),
@@ -302,17 +349,19 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
 /// Shows a QR code pointing to a tiny local web form so the playlist can be
 /// typed on a phone instead of with a TV remote. The pairing server is only
 /// alive while this tab is mounted (i.e. while it is the selected tab).
-class _QrPairingTab extends ConsumerStatefulWidget {
-  final VoidCallback onAdded;
+class _QrPairingTab extends StatefulWidget {
+  /// Prefills the phone form when editing an existing playlist.
+  final PairingSubmission? initial;
+  final Future<void> Function(PairingSubmission submission) onSubmission;
 
-  const _QrPairingTab({required this.onAdded});
+  const _QrPairingTab({this.initial, required this.onSubmission});
 
   @override
-  ConsumerState<_QrPairingTab> createState() => _QrPairingTabState();
+  State<_QrPairingTab> createState() => _QrPairingTabState();
 }
 
-class _QrPairingTabState extends ConsumerState<_QrPairingTab> {
-  final _server = QrPairingServer();
+class _QrPairingTabState extends State<_QrPairingTab> {
+  late final _server = QrPairingServer(initial: widget.initial);
   StreamSubscription<PairingSubmission>? _subscription;
   Uri? _url;
   String? _startError;
@@ -342,19 +391,10 @@ class _QrPairingTabState extends ConsumerState<_QrPairingTab> {
       _submissionError = null;
     });
     try {
-      final repo = ref.read(playlistRepositoryProvider);
-      final playlist = submission.isXtream
-          ? await repo.addXtreamPlaylist(
-              name: submission.name,
-              host: submission.xtreamHost!,
-              username: submission.xtreamUsername!,
-              password: submission.xtreamPassword!,
-            )
-          : await repo.addM3uPlaylist(name: submission.name, url: submission.m3uUrl!);
-      await repo.syncPlaylist(playlist);
-      widget.onAdded();
+      await widget.onSubmission(submission);
     } catch (e) {
-      if (mounted) setState(() => _submissionError = 'Falha ao adicionar a lista recebida: $e');
+      final action = widget.initial == null ? 'adicionar' : 'salvar';
+      if (mounted) setState(() => _submissionError = 'Falha ao $action a lista recebida: $e');
     } finally {
       if (mounted) setState(() => _processing = false);
     }
