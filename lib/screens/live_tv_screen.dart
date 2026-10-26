@@ -30,11 +30,15 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
   /// (TV boxes often can't run two).
   bool _fullscreenOpen = false;
 
+  /// The sidebar shows one list at a time: the categories, or (once one is
+  /// opened) only that category's channels. `_selectedCategory == null`
+  /// with this set means "Todos os canais" is open.
+  bool _categoryOpen = false;
+
   /// Remote-control focus targets: the "back to all lists" entry at the top
-  /// of a category's channels, and the category tile the user came from.
+  /// of an open category, and the category tile the user came from.
   final _backToAllFocus = FocusNode(debugLabel: 'backToAllCategories');
   final _lastCategoryFocus = FocusNode(debugLabel: 'lastCategory');
-  String? _lastCategory;
 
   @override
   void dispose() {
@@ -43,19 +47,20 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
     super.dispose();
   }
 
-  /// Opening a category jumps focus straight into its channels, so the
-  /// remote doesn't have to travel down the whole category list.
-  void _selectCategory(String? category) {
+  /// Opens a category (`null` = all channels), replacing the category list
+  /// with its channels; focus lands on the "back" entry at the top.
+  void _openCategory(String? category) {
     setState(() {
       _selectedCategory = category;
-      if (category != null) _lastCategory = category;
+      _categoryOpen = true;
     });
-    if (category != null) _focusAfterBuild(_backToAllFocus);
+    _focusAfterBuild(_backToAllFocus);
   }
 
-  /// Leaves the open category and puts focus back on its tile.
+  /// Returns to the category list with focus on the category just left.
+  /// `_selectedCategory` is kept so its tile can be found and highlighted.
   void _backToAllCategories() {
-    _selectCategory(null);
+    setState(() => _categoryOpen = false);
     _focusAfterBuild(_lastCategoryFocus);
   }
 
@@ -71,7 +76,7 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
 
     // The remote's Back key leaves an open category before leaving the tab.
     return PopScope(
-      canPop: _selectedCategory == null,
+      canPop: !_categoryOpen,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _backToAllCategories();
       },
@@ -96,7 +101,9 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
         final visibleChannels = channels.where((channel) {
           final matchesSearch =
               _search.isEmpty || channel.name.toLowerCase().contains(_search);
+          // Search and favorites look across every category unless one is open.
           final matchesCategory =
+              !_categoryOpen ||
               _selectedCategory == null ||
               _categoryOf(channel) == _selectedCategory;
           final matchesFavorite = !_favoritesOnly || channel.isFavorite;
@@ -112,15 +119,16 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
               categories: categories,
               categoryCounts: categoryCounts,
               selectedCategory: _selectedCategory,
+              categoryOpen: _categoryOpen,
+              showChannels: _categoryOpen || _search.isNotEmpty || _favoritesOnly,
               selectedChannelId: _selectedChannel?.id,
               favoritesOnly: _favoritesOnly,
               onSearchChanged: (value) =>
                   setState(() => _search = value.trim().toLowerCase()),
               onFavoritesChanged: (value) =>
                   setState(() => _favoritesOnly = value),
-              onCategorySelected: _selectCategory,
+              onCategorySelected: _openCategory,
               onBackToAll: _backToAllCategories,
-              lastCategory: _lastCategory,
               lastCategoryFocus: _lastCategoryFocus,
               backToAllFocus: _backToAllFocus,
               // Wide layout: first click plays inline, clicking the playing
@@ -196,13 +204,17 @@ class _ChannelSidebar extends StatelessWidget {
   final List<String> categories;
   final Map<String, int> categoryCounts;
   final String? selectedCategory;
+  final bool categoryOpen;
+
+  /// Whether the single list shows channels (open category, search or
+  /// favorites) instead of the categories.
+  final bool showChannels;
   final String? selectedChannelId;
   final bool favoritesOnly;
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<bool> onFavoritesChanged;
   final ValueChanged<String?> onCategorySelected;
   final VoidCallback onBackToAll;
-  final String? lastCategory;
   final FocusNode lastCategoryFocus;
   final FocusNode backToAllFocus;
   final ValueChanged<Channel> onChannelSelected;
@@ -214,13 +226,14 @@ class _ChannelSidebar extends StatelessWidget {
     required this.categories,
     required this.categoryCounts,
     required this.selectedCategory,
+    required this.categoryOpen,
+    required this.showChannels,
     required this.selectedChannelId,
     required this.favoritesOnly,
     required this.onSearchChanged,
     required this.onFavoritesChanged,
     required this.onCategorySelected,
     required this.onBackToAll,
-    required this.lastCategory,
     required this.lastCategoryFocus,
     required this.backToAllFocus,
     required this.onChannelSelected,
@@ -269,88 +282,97 @@ class _ChannelSidebar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 5),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            child: Row(
-              children: [
-                const Icon(Icons.category_outlined, size: 16),
-                const SizedBox(width: 7),
-                Text(
-                  'Categorias',
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Flexible(
-            flex: 4,
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 7),
-              itemCount: categories.length + 1,
-              itemBuilder: (context, index) {
-                final category = index == 0 ? null : categories[index - 1];
-                final selected = selectedCategory == category;
-                return _CategoryTile(
-                  label: category ?? 'Todos os canais',
-                  count: category == null
-                      ? totalChannelCount
-                      : categoryCounts[category] ?? 0,
-                  selected: selected,
-                  focusNode: category != null && category == lastCategory ? lastCategoryFocus : null,
-                  onTap: () => onCategorySelected(category),
-                );
-              },
-            ),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
-            child: Text(
-              '${channels.length} ${channels.length == 1 ? 'canal' : 'canais'}',
-              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
-            ),
-          ),
-          if (selectedCategory != null)
-            _BackToAllTile(
-              focusNode: backToAllFocus,
-              category: selectedCategory!,
-              onTap: onBackToAll,
-            ),
-          Expanded(
-            flex: 5,
-            child: channels.isEmpty
-                ? Center(
-                    child: Text(
-                      'Nenhum canal encontrado',
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: channels.length,
-                    itemExtent: 48,
-                    itemBuilder: (context, index) {
-                      final channel = channels[index];
-                      final selected = channel.id == selectedChannelId;
-                      return _ChannelTile(
-                        channel: channel,
-                        selected: selected,
-                        onTap: () => onChannelSelected(channel),
-                        onToggleFavorite: () => onToggleFavorite(channel),
-                      );
-                    },
-                  ),
-          ),
+          if (showChannels) ..._buildChannelList(colors) else ..._buildCategoryList(colors),
         ],
       ),
     );
   }
+
+  List<Widget> _buildCategoryList(ColorScheme colors) {
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(
+          children: [
+            const Icon(Icons.category_outlined, size: 16),
+            const SizedBox(width: 7),
+            Text(
+              'Categorias',
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+      Expanded(
+        child: ListView.builder(
+          // Keeps the scroll position when coming back from a category.
+          key: const PageStorageKey('live-tv-categories'),
+          padding: const EdgeInsets.symmetric(horizontal: 7),
+          itemCount: categories.length + 1,
+          itemBuilder: (context, index) {
+            final category = index == 0 ? null : categories[index - 1];
+            final selected = selectedCategory == category;
+            return _CategoryTile(
+              label: category ?? 'Todos os canais',
+              count: category == null
+                  ? totalChannelCount
+                  : categoryCounts[category] ?? 0,
+              selected: selected,
+              focusNode: selected ? lastCategoryFocus : null,
+              onTap: () => onCategorySelected(category),
+            );
+          },
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildChannelList(ColorScheme colors) {
+    return [
+      if (categoryOpen)
+        _BackToAllTile(
+          focusNode: backToAllFocus,
+          category: selectedCategory ?? 'Todos os canais',
+          onTap: onBackToAll,
+        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+        child: Text(
+          '${channels.length} ${channels.length == 1 ? 'canal' : 'canais'}',
+          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+        ),
+      ),
+      Expanded(
+        child: channels.isEmpty
+            ? Center(
+                child: Text(
+                  'Nenhum canal encontrado',
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+              )
+            : ListView.builder(
+                itemCount: channels.length,
+                itemExtent: 48,
+                itemBuilder: (context, index) {
+                  final channel = channels[index];
+                  final selected = channel.id == selectedChannelId;
+                  return _ChannelTile(
+                    channel: channel,
+                    selected: selected,
+                    onTap: () => onChannelSelected(channel),
+                    onToggleFavorite: () => onToggleFavorite(channel),
+                  );
+                },
+              ),
+      ),
+    ];
+  }
 }
 
-/// First entry of an open category: returns to every channel so the remote
-/// doesn't have to scroll back up to the category list.
+/// First entry of an open category: goes back to the category list.
 class _BackToAllTile extends StatelessWidget {
   final FocusNode focusNode;
   final String category;
