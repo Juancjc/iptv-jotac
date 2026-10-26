@@ -65,6 +65,13 @@
                     style="primary"
                     text="Entrar" />
 
+                <brls:Button
+                    id="phoneButton"
+                    width="280"
+                    height="auto"
+                    marginLeft="20"
+                    text="Pelo celular (QR Code)" />
+
             </brls:Box>
 
         </brls:Box>

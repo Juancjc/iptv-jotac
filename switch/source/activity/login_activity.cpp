@@ -1,6 +1,7 @@
 #include "activity/login_activity.hpp"
 
 #include "activity/catalog_activity.hpp"
+#include "activity/pairing_activity.hpp"
 #include "data/auth_repository.hpp"
 
 namespace {
@@ -11,7 +12,10 @@ const std::string kSuggestedM3uUrl = "https://iptv-org.github.io/iptv/languages/
 LoginActivity::LoginActivity(std::optional<iptv::StoredAuth> prefill, bool editing) {
     if (!prefill) return;
     listName = prefill->listName;
-    if (editing) editingListId = prefill->listId;
+    if (editing) {
+        editingListId = prefill->listId;
+        editingAuth = prefill;
+    }
     if (prefill->mode == iptv::AuthMode::M3u) {
         formModeIndex = 2;
         // No modo M3U o campo de URL do servidor é o próprio link da
@@ -55,6 +59,10 @@ void LoginActivity::onContentAvailable() {
         "Senha", password, [this](std::string text) { password = text; }, "senha");
 
     if (!editingListId.empty()) loginButton->setText("Salvar e conectar");
+    phoneButton->registerClickAction([this](brls::View*) {
+        brls::Application::pushActivity(new PairingActivity(editingAuth));
+        return true;
+    });
     loginButton->registerClickAction([this](brls::View* view) {
         submitLogin();
         return true;

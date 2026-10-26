@@ -27,10 +27,13 @@ class LoginActivity : public brls::Activity {
     BRLS_BIND(brls::InputCell, usernameCell, "username");
     BRLS_BIND(brls::InputCell, passwordCell, "password");
     BRLS_BIND(brls::Button, loginButton, "loginButton");
+    BRLS_BIND(brls::Button, phoneButton, "phoneButton");
 
     int formModeIndex = 0;
     std::string listName;
     std::string editingListId;
+    // Lista sendo editada, repassada pro formulário do celular.
+    std::optional<iptv::StoredAuth> editingAuth;
     std::string serverUrl;
     std::string username;
     std::string password;
