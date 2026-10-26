@@ -67,6 +67,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   Widget build(BuildContext context) {
     final playlistsAsync = ref.watch(playlistsProvider);
     final selectedPlaylistId = ref.watch(selectedPlaylistIdProvider);
+    final syncStatuses = ref.watch(playlistSyncStatusProvider);
     final screens = [
       HomeDashboardScreen(onSectionSelected: _selectSection),
       const LiveTvScreen(),
@@ -82,6 +83,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('IPTV Jotac'),
+        bottom: syncStatuses.isEmpty ? null : _SyncProgressBar(statuses: syncStatuses.values.toList()),
         actions: [
           playlistsAsync.when(
             data: (playlists) => Padding(
@@ -144,5 +146,45 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     if (_index == index) return;
     ref.read(searchQueryProvider.notifier).state = '';
     setState(() => _index = index);
+  }
+}
+
+/// Thin bar under the app bar shown on every tab while a playlist is being
+/// loaded, so a big list taking minutes doesn't look like a frozen app.
+class _SyncProgressBar extends StatelessWidget implements PreferredSizeWidget {
+  final List<PlaylistSyncStatus> statuses;
+
+  const _SyncProgressBar({required this.statuses});
+
+  @override
+  Size get preferredSize => const Size.fromHeight(26);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final first = statuses.first;
+    final extra = statuses.length > 1 ? ' (+${statuses.length - 1})' : '';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(
+            children: [
+              Icon(Icons.sync, size: 14, color: theme.colorScheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Carregando "${first.playlistName}"$extra: ${first.message}',
+                  style: theme.textTheme.bodySmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        LinearProgressIndicator(value: first.progress, minHeight: 2),
+      ],
+    );
   }
 }

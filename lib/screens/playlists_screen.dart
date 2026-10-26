@@ -140,6 +140,8 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
     final playlist = widget.playlist;
     final busy = widget.syncing || _deleting;
     final source = playlist.type == PlaylistType.m3u ? playlist.m3uUrl ?? '' : playlist.xtreamHost ?? '';
+    final status = ref.watch(playlistSyncStatusProvider.select((map) => map[playlist.id]));
+    final syncError = ref.watch(playlistSyncErrorsProvider.select((map) => map[playlist.id]));
 
     return Card(
       shape: widget.connected
@@ -183,7 +185,7 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
                       ),
                       Text(
                         widget.syncing
-                            ? 'Atualizando conteudo...'
+                            ? status?.message ?? 'Atualizando conteudo...'
                             : playlist.lastSyncedAt == null
                             ? 'Ainda nao atualizada'
                             : 'Ultima atualizacao: ${_formatDate(playlist.lastSyncedAt!)}',
@@ -199,6 +201,21 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
                   ),
               ],
             ),
+            if (widget.syncing)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(value: status?.progress),
+              ),
+            if (syncError != null && !widget.syncing)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Falha na ultima atualizacao: $syncError',
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,

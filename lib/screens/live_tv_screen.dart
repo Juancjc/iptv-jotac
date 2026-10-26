@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -23,10 +25,61 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
   bool _favoritesOnly = false;
   Channel? _selectedChannel;
 
+  /// True while the channel plays in the fullscreen [PlayerScreen]; the
+  /// inline player is removed meanwhile so only one stream/decoder is open
+  /// (TV boxes often can't run two).
+  bool _fullscreenOpen = false;
+
+  /// Remote-control focus targets: the "back to all lists" entry at the top
+  /// of a category's channels, and the category tile the user came from.
+  final _backToAllFocus = FocusNode(debugLabel: 'backToAllCategories');
+  final _lastCategoryFocus = FocusNode(debugLabel: 'lastCategory');
+  String? _lastCategory;
+
+  @override
+  void dispose() {
+    _backToAllFocus.dispose();
+    _lastCategoryFocus.dispose();
+    super.dispose();
+  }
+
+  /// Opening a category jumps focus straight into its channels, so the
+  /// remote doesn't have to travel down the whole category list.
+  void _selectCategory(String? category) {
+    setState(() {
+      _selectedCategory = category;
+      if (category != null) _lastCategory = category;
+    });
+    if (category != null) _focusAfterBuild(_backToAllFocus);
+  }
+
+  /// Leaves the open category and puts focus back on its tile.
+  void _backToAllCategories() {
+    _selectCategory(null);
+    _focusAfterBuild(_lastCategoryFocus);
+  }
+
+  void _focusAfterBuild(FocusNode target) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && target.context != null) target.requestFocus();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final channelsAsync = ref.watch(allChannelsProvider);
 
+    // The remote's Back key leaves an open category before leaving the tab.
+    return PopScope(
+      canPop: _selectedCategory == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _backToAllCategories();
+      },
+      child: _buildContent(channelsAsync),
+    );
+  }
+
+  Widget _buildContent(AsyncValue<List<Channel>> channelsAsync) {
     return channelsAsync.when(
       data: (channels) {
         final categoryCounts = <String, int>{};
@@ -65,23 +118,18 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
                   setState(() => _search = value.trim().toLowerCase()),
               onFavoritesChanged: (value) =>
                   setState(() => _favoritesOnly = value),
-              onCategorySelected: (value) =>
-                  setState(() => _selectedCategory = value),
+              onCategorySelected: _selectCategory,
+              onBackToAll: _backToAllCategories,
+              lastCategory: _lastCategory,
+              lastCategoryFocus: _lastCategoryFocus,
+              backToAllFocus: _backToAllFocus,
+              // Wide layout: first click plays inline, clicking the playing
+              // channel again (double click) expands it to fullscreen.
               onChannelSelected: (channel) {
-                if (desktop) {
+                if (desktop && _selectedChannel?.id != channel.id) {
                   setState(() => _selectedChannel = channel);
                 } else {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => PlayerScreen(
-                        title: channel.name,
-                        streamUrl: channel.streamUrl,
-                        contentId: channel.id,
-                        contentType: WatchableType.channel,
-                        posterUrl: channel.logoUrl,
-                      ),
-                    ),
-                  );
+                  _openFullscreen(channel);
                 }
               },
               onToggleFavorite: (channel) => ref
@@ -97,9 +145,12 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
                 Expanded(
                   child: _selectedChannel == null
                       ? const _ChannelPlaceholder()
+                      : _fullscreenOpen
+                      ? const ColoredBox(color: Colors.black)
                       : _InlineChannelPlayer(
                           key: ValueKey(_selectedChannel!.id),
                           channel: _selectedChannel!,
+                          onFullscreen: () => _openFullscreen(_selectedChannel!),
                         ),
                 ),
               ],
@@ -114,6 +165,23 @@ class _LiveTvScreenState extends ConsumerState<LiveTvScreen> {
         message: error.toString(),
       ),
     );
+  }
+
+  Future<void> _openFullscreen(Channel channel) async {
+    if (_fullscreenOpen) return;
+    setState(() => _fullscreenOpen = true);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          title: channel.name,
+          streamUrl: channel.streamUrl,
+          contentId: channel.id,
+          contentType: WatchableType.channel,
+          posterUrl: channel.logoUrl,
+        ),
+      ),
+    );
+    if (mounted) setState(() => _fullscreenOpen = false);
   }
 
   String _categoryOf(Channel channel) {
@@ -133,6 +201,10 @@ class _ChannelSidebar extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<bool> onFavoritesChanged;
   final ValueChanged<String?> onCategorySelected;
+  final VoidCallback onBackToAll;
+  final String? lastCategory;
+  final FocusNode lastCategoryFocus;
+  final FocusNode backToAllFocus;
   final ValueChanged<Channel> onChannelSelected;
   final ValueChanged<Channel> onToggleFavorite;
 
@@ -147,6 +219,10 @@ class _ChannelSidebar extends StatelessWidget {
     required this.onSearchChanged,
     required this.onFavoritesChanged,
     required this.onCategorySelected,
+    required this.onBackToAll,
+    required this.lastCategory,
+    required this.lastCategoryFocus,
+    required this.backToAllFocus,
     required this.onChannelSelected,
     required this.onToggleFavorite,
   });
@@ -223,6 +299,7 @@ class _ChannelSidebar extends StatelessWidget {
                       ? totalChannelCount
                       : categoryCounts[category] ?? 0,
                   selected: selected,
+                  focusNode: category != null && category == lastCategory ? lastCategoryFocus : null,
                   onTap: () => onCategorySelected(category),
                 );
               },
@@ -236,6 +313,12 @@ class _ChannelSidebar extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ),
+          if (selectedCategory != null)
+            _BackToAllTile(
+              focusNode: backToAllFocus,
+              category: selectedCategory!,
+              onTap: onBackToAll,
+            ),
           Expanded(
             flex: 5,
             child: channels.isEmpty
@@ -266,17 +349,68 @@ class _ChannelSidebar extends StatelessWidget {
   }
 }
 
+/// First entry of an open category: returns to every channel so the remote
+/// doesn't have to scroll back up to the category list.
+class _BackToAllTile extends StatelessWidget {
+  final FocusNode focusNode;
+  final String category;
+  final VoidCallback onTap;
+
+  const _BackToAllTile({required this.focusNode, required this.category, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surfaceContainer,
+      child: InkWell(
+        focusNode: focusNode,
+        onTap: onTap,
+        child: SizedBox(
+          height: 44,
+          child: Row(
+            children: [
+              const SizedBox(width: 12),
+              Icon(Icons.arrow_back, size: 18, color: colors.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Voltar para todas as listas',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: colors.primary),
+                ),
+              ),
+              Flexible(
+                child: Text(
+                  category,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CategoryTile extends StatelessWidget {
   final String label;
   final int count;
   final bool selected;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
 
   const _CategoryTile({
     required this.label,
     required this.count,
     required this.selected,
     required this.onTap,
+    this.focusNode,
   });
 
   @override
@@ -290,6 +424,7 @@ class _CategoryTile extends StatelessWidget {
             : Colors.transparent,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
+          focusNode: focusNode,
           borderRadius: BorderRadius.circular(6),
           onTap: onTap,
           child: SizedBox(
@@ -449,6 +584,11 @@ class _ChannelPlaceholder extends StatelessWidget {
             'Selecione um canal para assistir',
             style: TextStyle(color: colors.onSurfaceVariant),
           ),
+          const SizedBox(height: 8),
+          Text(
+            'Clique duas vezes no canal para ver em tela cheia',
+            style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant.withValues(alpha: .8)),
+          ),
         ],
       ),
     );
@@ -457,8 +597,9 @@ class _ChannelPlaceholder extends StatelessWidget {
 
 class _InlineChannelPlayer extends StatefulWidget {
   final Channel channel;
+  final VoidCallback onFullscreen;
 
-  const _InlineChannelPlayer({super.key, required this.channel});
+  const _InlineChannelPlayer({super.key, required this.channel, required this.onFullscreen});
 
   @override
   State<_InlineChannelPlayer> createState() => _InlineChannelPlayerState();
@@ -490,14 +631,42 @@ class _InlineChannelPlayerState extends State<_InlineChannelPlayer> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Text(
-              widget.channel.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.channel.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // Discreet hint: the remote has no way to reach the video's
+                // own fullscreen control on Android.
+                Flexible(
+                  child: Text(
+                    'Clique 2x no canal para tela cheia · Voltar retorna',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: .55)),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Tela cheia',
+                  icon: const Icon(Icons.fullscreen, color: Colors.white),
+                  onPressed: widget.onFullscreen,
+                ),
+              ],
             ),
           ),
-          Expanded(child: Video(controller: _controller)),
+          Expanded(
+            child: GestureDetector(
+              onDoubleTap: widget.onFullscreen,
+              // Android/Fire TV: the built-in controls aren't reachable with a
+              // remote and would swallow the double tap.
+              child: Video(controller: _controller, controls: Platform.isAndroid ? NoVideoControls : AdaptiveVideoControls),
+            ),
+          ),
         ],
       ),
     );

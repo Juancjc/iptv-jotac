@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:isolate';
+
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
@@ -18,6 +21,14 @@ const _vodExtensions = {'mp4', 'mkv', 'avi', 'm4v', 'mov', 'wmv'};
 
 /// Matches common "S01E02" / "1x02" style season/episode markers in a title.
 final _seasonEpisodeRegExp = RegExp(r'(?:S(\d{1,2})\s*E(\d{1,3}))|(?:(\d{1,2})x(\d{1,3}))', caseSensitive: false);
+
+/// Rows per insert batch. Keeps each message to the background database
+/// isolate small so huge lists don't stall the UI while being saved.
+const _insertChunkSize = 5000;
+
+/// Reports sync progress: a short user-facing [message] and, when known, a
+/// [progress] fraction between 0 and 1.
+typedef SyncProgressCallback = void Function(String message, double? progress);
 
 /// Owns all persistence and remote-sync logic for playlists and their
 /// content (channels, movies, series/episodes). Screens and providers talk
@@ -121,112 +132,84 @@ class PlaylistRepository {
 
   /// Fetches fresh content for [playlist] from its remote source and
   /// replaces the locally cached channels/movies/series.
-  Future<void> syncPlaylist(Playlist playlist) async {
+  Future<void> syncPlaylist(Playlist playlist, {SyncProgressCallback? onProgress}) async {
     if (playlist.type == PlaylistType.m3u) {
-      await _syncM3uPlaylist(playlist);
+      await _syncM3uPlaylist(playlist, onProgress);
     } else {
-      await _syncXtreamPlaylist(playlist);
+      await _syncXtreamPlaylist(playlist, onProgress);
     }
     await (_db.update(
       _db.playlists,
     )..where((t) => t.id.equals(playlist.id))).write(PlaylistsCompanion(lastSyncedAt: Value(DateTime.now())));
   }
 
-  Future<void> _syncM3uPlaylist(Playlist playlist) async {
+  Future<void> _syncM3uPlaylist(Playlist playlist, SyncProgressCallback? onProgress) async {
     final favoriteChannelUrls = await _favoriteChannelUrls(playlist.id);
     final favoriteMovieUrls = await _favoriteMovieUrls(playlist.id);
     final favoriteSeriesTitles = await _favoriteSeriesTitles(playlist.id);
-    final response = await _dio.get<String>(playlist.m3uUrl!, options: Options(responseType: ResponseType.plain));
-    final entries = M3UParser().parse(response.data ?? '');
 
-    final channelRows = <ChannelsCompanion>[];
-    final movieRows = <MoviesCompanion>[];
-    // seriesTitle -> seriesId, used to group episodes under one series row.
-    final seriesIdByTitle = <String, String>{};
-    final seriesRows = <SeriesTableCompanion>[];
-    final episodeRows = <EpisodesCompanion>[];
+    onProgress?.call('Baixando lista...', null);
+    final response = await _dio.get<List<int>>(
+      playlist.m3uUrl!,
+      options: Options(responseType: ResponseType.bytes),
+      onReceiveProgress: (received, total) {
+        final mb = (received / (1024 * 1024)).toStringAsFixed(1);
+        onProgress?.call('Baixando lista... $mb MB', total > 0 ? received / total : null);
+      },
+    );
+    final bytes = response.data is Uint8List ? response.data as Uint8List : Uint8List.fromList(response.data ?? const []);
 
-    for (final entry in entries) {
-      final classification = _classifyM3uEntry(entry);
-      switch (classification.kind) {
-        case _M3uKind.channel:
-          channelRows.add(
-            ChannelsCompanion.insert(
-              id: _uuid.v4(),
-              playlistId: playlist.id,
-              name: entry.name,
-              logoUrl: Value(entry.logoUrl),
-              category: Value(entry.groupTitle),
-              streamUrl: entry.url,
-              isFavorite: Value(favoriteChannelUrls.contains(entry.url)),
-            ),
-          );
-        case _M3uKind.movie:
-          movieRows.add(
-            MoviesCompanion.insert(
-              id: _uuid.v4(),
-              playlistId: playlist.id,
-              title: entry.name,
-              posterUrl: Value(entry.logoUrl),
-              category: Value(entry.groupTitle),
-              streamUrl: entry.url,
-              extension: Value(classification.extension),
-              isFavorite: Value(favoriteMovieUrls.contains(entry.url)),
-            ),
-          );
-        case _M3uKind.episode:
-          final seriesTitle = classification.seriesTitle!;
-          final seriesId = seriesIdByTitle.putIfAbsent(seriesTitle, () {
-            final id = _uuid.v4();
-            seriesRows.add(
-              SeriesTableCompanion.insert(
-                id: id,
-                playlistId: playlist.id,
-                title: seriesTitle,
-                posterUrl: Value(entry.logoUrl),
-                category: Value(entry.groupTitle),
-                isFavorite: Value(favoriteSeriesTitles.contains(_favoriteTitleKey(seriesTitle))),
-              ),
-            );
-            return id;
-          });
-          episodeRows.add(
-            EpisodesCompanion.insert(
-              id: _uuid.v4(),
-              seriesId: seriesId,
-              seasonNumber: classification.season!,
-              episodeNumber: classification.episode!,
-              title: entry.name,
-              streamUrl: entry.url,
-              extension: Value(classification.extension),
-            ),
-          );
+    // Decoding, parsing and classifying a big list takes long enough on a
+    // TV box to freeze the UI (and trigger Android's "not responding"), so
+    // it runs on a separate isolate.
+    onProgress?.call('Processando lista...', null);
+    final rows = await _buildM3uRowsInBackground(
+      playlist.id,
+      bytes,
+      favoriteChannelUrls,
+      favoriteMovieUrls,
+      favoriteSeriesTitles,
+    );
+
+    final total = rows.total;
+    var saved = 0;
+    void reportSaved() => onProgress?.call('Salvando $saved de $total itens...', total == 0 ? null : saved / total);
+
+    Future<void> insertChunked<T extends Table, D>(TableInfo<T, D> table, List<Insertable<D>> items) async {
+      for (var i = 0; i < items.length; i += _insertChunkSize) {
+        final chunk = items.sublist(i, i + _insertChunkSize > items.length ? items.length : i + _insertChunkSize);
+        await _db.batch((batch) => batch.insertAll(table, chunk));
+        saved += chunk.length;
+        reportSaved();
       }
     }
 
+    reportSaved();
     await _db.transaction(() async {
       await (_db.delete(_db.channels)..where((t) => t.playlistId.equals(playlist.id))).go();
       await (_db.delete(_db.movies)..where((t) => t.playlistId.equals(playlist.id))).go();
       await _deleteSeriesContentForPlaylist(playlist.id);
 
-      await _db.batch((batch) {
-        batch.insertAll(_db.channels, channelRows);
-        batch.insertAll(_db.movies, movieRows);
-        batch.insertAll(_db.seriesTable, seriesRows);
-        batch.insertAll(_db.episodes, episodeRows);
-      });
+      await insertChunked(_db.channels, rows.channels);
+      await insertChunked(_db.movies, rows.movies);
+      await insertChunked(_db.seriesTable, rows.series);
+      await insertChunked(_db.episodes, rows.episodes);
     });
   }
 
-  Future<void> _syncXtreamPlaylist(Playlist playlist) async {
+  Future<void> _syncXtreamPlaylist(Playlist playlist, SyncProgressCallback? onProgress) async {
     final favoriteChannelUrls = await _favoriteChannelUrls(playlist.id);
     final favoriteMovieUrls = await _favoriteMovieUrls(playlist.id);
     final favoriteSeriesIds = await _favoriteSeriesIds(playlist.id);
     final client = _clientFor(playlist);
+    onProgress?.call('Conectando ao servidor...', null);
     await client.authenticate();
 
+    onProgress?.call('Baixando canais...', null);
     final liveStreams = await client.getLiveStreams();
+    onProgress?.call('Baixando filmes...', null);
     final vodStreams = await client.getVodStreams();
+    onProgress?.call('Baixando series...', null);
     final seriesList = await client.getSeries();
 
     final channelRows = liveStreams.map((s) {
@@ -278,6 +261,7 @@ class PlaylistRepository {
         )
         .toList();
 
+    onProgress?.call('Salvando conteudo...', null);
     await _db.transaction(() async {
       await (_db.delete(_db.channels)..where((t) => t.playlistId.equals(playlist.id))).go();
       await (_db.delete(_db.movies)..where((t) => t.playlistId.equals(playlist.id))).go();
@@ -431,7 +415,6 @@ class PlaylistRepository {
     return rows.map((row) => _favoriteTitleKey(row.title)).toSet();
   }
 
-  String _favoriteTitleKey(String title) => title.trim().toLowerCase();
 
   // ---------------------------------------------------------------------
   // Mapping helpers
@@ -498,36 +481,6 @@ class PlaylistRepository {
       extension: row.extension,
     );
   }
-
-  _M3uClassification _classifyM3uEntry(M3UEntry entry) {
-    final extensionMatch = RegExp(r'\.([a-zA-Z0-9]+)(?:\?.*)?$').firstMatch(entry.url);
-    final extension = extensionMatch?.group(1)?.toLowerCase();
-    final group = entry.groupTitle?.toLowerCase() ?? '';
-    final looksLikeSeries =
-        group.contains('serie') || group.contains('série') || _seasonEpisodeRegExp.hasMatch(entry.name);
-
-    if (looksLikeSeries) {
-      final match = _seasonEpisodeRegExp.firstMatch(entry.name);
-      if (match != null) {
-        final season = int.tryParse(match.group(1) ?? match.group(3) ?? '1') ?? 1;
-        final episode = int.tryParse(match.group(2) ?? match.group(4) ?? '1') ?? 1;
-        final seriesTitle = entry.name.substring(0, match.start).trim().replaceAll(RegExp(r'[-_]+$'), '').trim();
-        return _M3uClassification.episode(
-          seriesTitle: seriesTitle.isEmpty ? entry.name : seriesTitle,
-          season: season,
-          episode: episode,
-          extension: extension,
-        );
-      }
-    }
-
-    final isVodExtension = extension != null && _vodExtensions.contains(extension);
-    if (isVodExtension || group.contains('filme') || group.contains('movie') || group.contains('vod')) {
-      return _M3uClassification.movie(extension: extension);
-    }
-
-    return const _M3uClassification.channel();
-  }
 }
 
 enum _M3uKind { channel, movie, episode }
@@ -558,4 +511,141 @@ class _M3uClassification {
     required this.episode,
     this.extension,
   }) : kind = _M3uKind.episode;
+}
+
+String _favoriteTitleKey(String title) => title.trim().toLowerCase();
+
+class _M3uRows {
+  final List<ChannelsCompanion> channels;
+  final List<MoviesCompanion> movies;
+  final List<SeriesTableCompanion> series;
+  final List<EpisodesCompanion> episodes;
+
+  const _M3uRows(this.channels, this.movies, this.series, this.episodes);
+
+  int get total => channels.length + movies.length + series.length + episodes.length;
+}
+
+/// Runs [_buildM3uRows] on a new isolate. Kept top-level so the closure sent
+/// to the isolate can't capture the repository (its database handle is not
+/// sendable).
+Future<_M3uRows> _buildM3uRowsInBackground(
+  String playlistId,
+  Uint8List bytes,
+  Set<String> favoriteChannelUrls,
+  Set<String> favoriteMovieUrls,
+  Set<String> favoriteSeriesTitles,
+) {
+  return Isolate.run(
+    () => _buildM3uRows(playlistId, bytes, favoriteChannelUrls, favoriteMovieUrls, favoriteSeriesTitles),
+  );
+}
+
+/// Turns raw M3U bytes into database rows. Top-level (no repository state)
+/// so it can run inside [Isolate.run].
+_M3uRows _buildM3uRows(
+  String playlistId,
+  Uint8List bytes,
+  Set<String> favoriteChannelUrls,
+  Set<String> favoriteMovieUrls,
+  Set<String> favoriteSeriesTitles,
+) {
+  final entries = M3UParser().parse(utf8.decode(bytes, allowMalformed: true));
+
+  final channelRows = <ChannelsCompanion>[];
+  final movieRows = <MoviesCompanion>[];
+  // seriesTitle -> seriesId, used to group episodes under one series row.
+  final seriesIdByTitle = <String, String>{};
+  final seriesRows = <SeriesTableCompanion>[];
+  final episodeRows = <EpisodesCompanion>[];
+
+  for (final entry in entries) {
+    final classification = _classifyM3uEntry(entry);
+    switch (classification.kind) {
+      case _M3uKind.channel:
+        channelRows.add(
+          ChannelsCompanion.insert(
+            id: _uuid.v4(),
+            playlistId: playlistId,
+            name: entry.name,
+            logoUrl: Value(entry.logoUrl),
+            category: Value(entry.groupTitle),
+            streamUrl: entry.url,
+            isFavorite: Value(favoriteChannelUrls.contains(entry.url)),
+          ),
+        );
+      case _M3uKind.movie:
+        movieRows.add(
+          MoviesCompanion.insert(
+            id: _uuid.v4(),
+            playlistId: playlistId,
+            title: entry.name,
+            posterUrl: Value(entry.logoUrl),
+            category: Value(entry.groupTitle),
+            streamUrl: entry.url,
+            extension: Value(classification.extension),
+            isFavorite: Value(favoriteMovieUrls.contains(entry.url)),
+          ),
+        );
+      case _M3uKind.episode:
+        final seriesTitle = classification.seriesTitle!;
+        final seriesId = seriesIdByTitle.putIfAbsent(seriesTitle, () {
+          final id = _uuid.v4();
+          seriesRows.add(
+            SeriesTableCompanion.insert(
+              id: id,
+              playlistId: playlistId,
+              title: seriesTitle,
+              posterUrl: Value(entry.logoUrl),
+              category: Value(entry.groupTitle),
+              isFavorite: Value(favoriteSeriesTitles.contains(_favoriteTitleKey(seriesTitle))),
+            ),
+          );
+          return id;
+        });
+        episodeRows.add(
+          EpisodesCompanion.insert(
+            id: _uuid.v4(),
+            seriesId: seriesId,
+            seasonNumber: classification.season!,
+            episodeNumber: classification.episode!,
+            title: entry.name,
+            streamUrl: entry.url,
+            extension: Value(classification.extension),
+          ),
+        );
+    }
+  }
+
+  return _M3uRows(channelRows, movieRows, seriesRows, episodeRows);
+}
+
+_M3uClassification _classifyM3uEntry(M3UEntry entry) {
+  final extensionMatch = RegExp(r'\.([a-zA-Z0-9]+)(?:\?.*)?$').firstMatch(entry.url);
+  final extension = extensionMatch?.group(1)?.toLowerCase();
+  final group = entry.groupTitle?.toLowerCase() ?? '';
+  final looksLikeSeries =
+      group.contains('serie') || group.contains('série') || _seasonEpisodeRegExp.hasMatch(entry.name);
+
+  if (looksLikeSeries) {
+    final match = _seasonEpisodeRegExp.firstMatch(entry.name);
+    if (match != null) {
+      final season = int.tryParse(match.group(1) ?? match.group(3) ?? '1') ?? 1;
+      final episode = int.tryParse(match.group(2) ?? match.group(4) ?? '1') ?? 1;
+      final seriesTitle = entry.name.substring(0, match.start).trim().replaceAll(RegExp(r'[-_]+$'), '').trim();
+      return _M3uClassification.episode(
+        seriesTitle: seriesTitle.isEmpty ? entry.name : seriesTitle,
+        season: season,
+        episode: episode,
+        extension: extension,
+      );
+    }
+  }
+
+  final isVodExtension = extension != null && _vodExtensions.contains(extension);
+  if (isVodExtension || group.contains('filme') || group.contains('movie') || group.contains('vod')) {
+    return _M3uClassification.movie(extension: extension);
+  }
+
+  return const _M3uClassification.channel();
 }

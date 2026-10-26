@@ -92,8 +92,7 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
         name: _m3uNameController.text.trim(),
         url: _m3uUrlController.text.trim(),
       );
-      await repo.syncPlaylist(playlist);
-      if (mounted) Navigator.of(context).pop();
+      _closeAndSync(playlist, 'adicionada');
     } catch (e) {
       setState(() => _error = 'Falha ao carregar lista: $e');
     } finally {
@@ -127,8 +126,7 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
         username: _xtreamUserController.text.trim(),
         password: _xtreamPassController.text.trim(),
       );
-      await repo.syncPlaylist(playlist);
-      if (mounted) Navigator.of(context).pop();
+      _closeAndSync(playlist, 'adicionada');
     } catch (e) {
       setState(() => _error = 'Falha ao conectar: $e');
     } finally {
@@ -166,8 +164,7 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             password: submission.xtreamPassword!,
           )
         : await repo.addM3uPlaylist(name: submission.name, url: submission.m3uUrl!);
-    await repo.syncPlaylist(playlist);
-    if (mounted) Navigator.of(context).pop();
+    _closeAndSync(playlist, 'adicionada');
   }
 
   PairingSubmission? get _pairingInitial {
@@ -185,10 +182,35 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
 
   Future<void> _saveEdits(Playlist edited) async {
     final updated = await ref.read(playlistRepositoryProvider).updatePlaylist(edited);
+    if (!mounted) return;
     if (_syncAfterSave) {
-      await ref.read(playlistSyncControllerProvider).sync(updated);
+      _closeAndSync(updated, 'salva');
+    } else {
+      Navigator.of(context).pop();
     }
-    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Closes the dialog right away and loads the content in the background.
+  /// Big lists can take minutes on a TV box; progress shows up in the top
+  /// bar and in the Listas tab instead of a dialog that looks frozen.
+  void _closeAndSync(Playlist playlist, String action) {
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
+    ref.read(playlistSyncControllerProvider).sync(playlist).then(
+      (_) => messenger.showSnackBar(SnackBar(content: Text('Lista "${playlist.name}" carregada'))),
+      onError: (Object error) => messenger.showSnackBar(
+        SnackBar(content: Text('Falha ao carregar "${playlist.name}": $error'), backgroundColor: errorColor),
+      ),
+    );
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text(
+          'Lista "${playlist.name}" $action. Carregando em segundo plano; listas grandes podem levar alguns minutos.',
+        ),
+      ),
+    );
+    Navigator.of(context).pop();
   }
 
   @override

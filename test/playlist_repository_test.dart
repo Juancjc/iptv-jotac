@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -198,7 +200,7 @@ class _FakeDio with DioMixin {
     ProgressCallback? onReceiveProgress,
   }) async {
     return Response<T>(
-      data: body as T,
+      data: (options?.responseType == ResponseType.bytes ? utf8.encode(body) : body) as T,
       statusCode: 200,
       requestOptions: RequestOptions(path: path),
     );
