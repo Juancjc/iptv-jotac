@@ -226,6 +226,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       (_) => _saveProgress(),
     );
     _playerInitialization = _initializePlayer();
+
+    // Live channels have no resume point or track choice worth stopping for,
+    // and on TV remotes the "Assistir" button may not get focus: play directly.
+    if (widget.contentType == WatchableType.channel) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_startWatching());
+      });
+    }
   }
 
   Future<void> _initializePlayer() async {
@@ -562,7 +570,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               ),
             ),
           ),
-          if (!_readyToWatch)
+          // Channels start on their own, so the overlay only comes back to
+          // show an error (and a retry button).
+          if (!_readyToWatch &&
+              (widget.contentType != WatchableType.channel ||
+                  _initializationError != null))
             _PrePlaybackOverlay(
               title: widget.title,
               posterUrl: widget.posterUrl,
