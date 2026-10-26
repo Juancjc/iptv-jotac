@@ -21,7 +21,29 @@ size_t writeToFileCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
 
 }  // namespace
 
-HttpResponse httpGetWithTimeout(const std::string& url, long timeoutSeconds) {
+namespace {
+
+// Corta a escrita quando já recebeu `limit` bytes — devolver menos que o
+// pedido faz o libcurl abortar com CURLE_WRITE_ERROR, que tratamos como OK.
+struct PrefixSink {
+    std::string* body;
+    size_t limit;
+};
+
+size_t prefixWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* sink = static_cast<PrefixSink*>(userdata);
+    size_t total = size * nmemb;
+    size_t room = sink->limit > sink->body->size() ? sink->limit - sink->body->size() : 0;
+    sink->body->append(ptr, total < room ? total : room);
+    return total < room ? total : 0;
+}
+
+// `timeoutSeconds` > 0: limite total da requisição (pôsteres/logos).
+// `timeoutSeconds` == 0: sem limite total — playlists M3U e respostas Xtream
+// grandes levam bem mais que 15s pra baixar no Wi-Fi do Switch; nesse caso só
+// desistimos se a conexão não abrir ou se o download ficar parado.
+// `maxBytes` > 0: lê só o começo da resposta e encerra.
+HttpResponse performGet(const std::string& url, long timeoutSeconds, size_t maxBytes) {
     HttpResponse response;
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -29,11 +51,25 @@ HttpResponse httpGetWithTimeout(const std::string& url, long timeoutSeconds) {
         return response;
     }
 
+    PrefixSink sink{&response.body, maxBytes};
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response.body);
+    if (maxBytes > 0) {
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, prefixWriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sink);
+    } else {
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response.body);
+    }
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeoutSeconds);
+    if (timeoutSeconds > 0) {
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeoutSeconds);
+    } else {
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 20L);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);
+    }
+    // Aceita gzip/deflate: playlists M3U são texto e encolhem ~10x.
+    curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     // A API do GitHub (usada pelo atualizador) responde 403 sem isso —
@@ -41,7 +77,8 @@ HttpResponse httpGetWithTimeout(const std::string& url, long timeoutSeconds) {
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "IptvJotacSwitch");
 
     CURLcode res = curl_easy_perform(curl);
-    if (res != CURLE_OK) {
+    bool truncated = res == CURLE_WRITE_ERROR && maxBytes > 0 && response.body.size() >= maxBytes;
+    if (res != CURLE_OK && !truncated) {
         response.error = curl_easy_strerror(res);
     } else {
         long code = 0;
@@ -54,8 +91,18 @@ HttpResponse httpGetWithTimeout(const std::string& url, long timeoutSeconds) {
     return response;
 }
 
+}  // namespace
+
+HttpResponse httpGetWithTimeout(const std::string& url, long timeoutSeconds) {
+    return performGet(url, timeoutSeconds, 0);
+}
+
 HttpResponse httpGet(const std::string& url) {
-    return httpGetWithTimeout(url, 15L);
+    return performGet(url, 0, 0);
+}
+
+HttpResponse httpGetPrefix(const std::string& url, size_t maxBytes) {
+    return performGet(url, 0, maxBytes);
 }
 
 HttpResponse httpPostJson(const std::string& url, const std::string& jsonBody) {

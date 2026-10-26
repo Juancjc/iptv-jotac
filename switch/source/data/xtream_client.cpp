@@ -185,7 +185,9 @@ EpgResult getShortEpg(const Credentials& creds, long streamId, int limit) {
 
 LoginResult verifyM3uUrl(const std::string& m3uUrl) {
     LoginResult result;
-    HttpResponse response = httpGet(m3uUrl);
+    // O cabeçalho #EXTM3U/#EXTINF aparece logo no início; a lista completa é
+    // baixada depois, ao abrir o catálogo.
+    HttpResponse response = httpGetPrefix(m3uUrl, 64 * 1024);
     if (!response.ok) {
         result.error = !response.error.empty() ? response.error : "Servidor M3U não respondeu";
         return result;

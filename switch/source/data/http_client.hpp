@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <string>
 
@@ -16,6 +17,8 @@ struct HttpResponse {
     std::string error;
 };
 
+// Sem limite de tempo total (só de conexão e de download parado) — listas
+// M3U grandes podem levar minutos pra baixar.
 HttpResponse httpGet(const std::string& url);
 HttpResponse httpPostJson(const std::string& url, const std::string& jsonBody);
 
@@ -25,6 +28,10 @@ HttpResponse httpPostJson(const std::string& url, const std::string& jsonBody);
 // travava essa thread (e, com ela, qualquer outra coisa da tela esperando
 // pra rodar) por tempo longo demais só por causa de uma imagem decorativa.
 HttpResponse httpGetWithTimeout(const std::string& url, long timeoutSeconds);
+
+// Baixa só os primeiros `maxBytes` da resposta e encerra — usado pra validar
+// uma playlist M3U no login sem baixar a lista inteira.
+HttpResponse httpGetPrefix(const std::string& url, size_t maxBytes);
 
 // Baixa uma URL direto pra um arquivo (streaming via callback do libcurl),
 // em vez de acumular tudo num std::string na memória — usado pelo
