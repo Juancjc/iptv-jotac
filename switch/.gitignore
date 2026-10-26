@@ -1,0 +1,5 @@
+build-switch/
+*.nro
+*.elf
+*.nacp
+build/

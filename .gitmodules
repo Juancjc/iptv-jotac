@@ -1,0 +1,7 @@
+[submodule "switch/library/borealis"]
+	path = switch/library/borealis
+	url = https://github.com/dragonflylee/borealis
+	branch = switchfin
+[submodule "switch/library/lunasvg"]
+	path = switch/library/lunasvg
+	url = https://github.com/sammycage/lunasvg
