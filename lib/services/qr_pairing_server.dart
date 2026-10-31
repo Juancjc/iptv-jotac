@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
+import 'network_address.dart';
+
 /// Data submitted by the phone's browser through the pairing web form.
 class PairingSubmission {
   final String name;
@@ -62,7 +64,7 @@ class QrPairingServer {
       server = await shelf_io.serve(handler, InternetAddress.anyIPv4, 0, shared: true);
     }
     _server = server;
-    final ip = await _findLocalIPv4();
+    final ip = await findLocalIPv4();
     return Uri(scheme: 'http', host: ip, port: server.port);
   }
 
@@ -70,44 +72,6 @@ class QrPairingServer {
     await _server?.close(force: true);
     _server = null;
     await _submissions.close();
-  }
-
-  Future<String> _findLocalIPv4() async {
-    List<NetworkInterface> interfaces;
-    try {
-      interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-      );
-    } on SocketException {
-      return '127.0.0.1';
-    }
-
-    InternetAddress? fallback;
-    for (final iface in interfaces) {
-      final name = iface.name.toLowerCase();
-      final looksVirtual = name.contains('virtual') ||
-          name.contains('vmware') ||
-          name.contains('vethernet') ||
-          name.contains('docker') ||
-          name.contains('loopback');
-      for (final addr in iface.addresses) {
-        if (!_isPrivateLan(addr.address)) continue;
-        fallback ??= addr;
-        if (!looksVirtual) return addr.address;
-      }
-    }
-    return fallback?.address ?? '127.0.0.1';
-  }
-
-  bool _isPrivateLan(String ip) {
-    if (ip.startsWith('192.168.') || ip.startsWith('10.')) return true;
-    final match = RegExp(r'^172\.(\d{1,3})\.').firstMatch(ip);
-    if (match != null) {
-      final second = int.tryParse(match.group(1)!) ?? 0;
-      return second >= 16 && second <= 31;
-    }
-    return false;
   }
 
   Future<shelf.Response> _handle(shelf.Request request) async {

@@ -280,6 +280,30 @@ class PlaylistRepository {
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Single-item lookups (used by the phone remote control)
+  // ---------------------------------------------------------------------
+
+  Future<Channel?> channelById(String id) async {
+    final row = await (_db.select(_db.channels)..where((t) => t.id.equals(id))).getSingleOrNull();
+    return row == null ? null : _channelFromRow(row);
+  }
+
+  Future<Movie?> movieById(String id) async {
+    final row = await (_db.select(_db.movies)..where((t) => t.id.equals(id))).getSingleOrNull();
+    return row == null ? null : _movieFromRow(row);
+  }
+
+  Future<domain.Series?> seriesById(String id) async {
+    final row = await (_db.select(_db.seriesTable)..where((t) => t.id.equals(id))).getSingleOrNull();
+    return row == null ? null : _seriesFromRow(row);
+  }
+
+  Future<domain.Episode?> episodeById(String id) async {
+    final row = await (_db.select(_db.episodes)..where((t) => t.id.equals(id))).getSingleOrNull();
+    return row == null ? null : _episodeFromRow(row);
+  }
+
   /// Fetches (and caches) the episode list for a series whose playlist is
   /// an Xtream source. For M3U-sourced series, episodes are already fully
   /// populated during sync, so this is a no-op.

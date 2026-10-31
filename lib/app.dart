@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'navigation.dart';
 import 'providers/settings_providers.dart';
 import 'screens/home_shell.dart';
 
@@ -30,6 +31,7 @@ class IptvJotacApp extends ConsumerWidget {
         );
 
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'IPTV Jotac',
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
