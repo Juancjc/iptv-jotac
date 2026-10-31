@@ -41,12 +41,20 @@ class SeriesDetailScreen extends ConsumerWidget {
               for (final season in seasons) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text('Temporada $season', style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    'Temporada $season',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
-                for (final episode in bySeason[season]!..sort((a, b) => a.episodeNumber.compareTo(b.episodeNumber)))
+                for (final episode
+                    in bySeason[season]!..sort(
+                      (a, b) => a.episodeNumber.compareTo(b.episodeNumber),
+                    ))
                   Card(
                     child: ListTile(
-                      leading: CircleAvatar(child: Text('${episode.episodeNumber}')),
+                      leading: CircleAvatar(
+                        child: Text('${episode.episodeNumber}'),
+                      ),
                       title: Text(episode.title),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -55,28 +63,38 @@ class SeriesDetailScreen extends ConsumerWidget {
                             icon: const Icon(Icons.download_outlined),
                             tooltip: 'Baixar episodio',
                             onPressed: () {
-                              ref.read(downloadsProvider.notifier).enqueue(
+                              ref
+                                  .read(downloadsProvider.notifier)
+                                  .enqueue(
                                     sourceUrl: episode.streamUrl,
-                                    title: '${series.title} - S${episode.seasonNumber}E${episode.episodeNumber}',
+                                    title:
+                                        '${series.title} - S${episode.seasonNumber}E${episode.episodeNumber}',
                                     contentType: DownloadContentType.episode,
                                   );
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Episodio adicionado a fila de downloads')),
+                                const SnackBar(
+                                  content: Text(
+                                    'Episodio adicionado a fila de downloads',
+                                  ),
+                                ),
                               );
                             },
                           ),
                           IconButton(
                             icon: const Icon(Icons.play_arrow),
                             tooltip: 'Assistir',
-                            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => PlayerScreen(
-                                title: '${series.title} - S${episode.seasonNumber}E${episode.episodeNumber}',
-                                streamUrl: episode.streamUrl,
-                                contentId: episode.id,
-                                contentType: WatchableType.episode,
-                                posterUrl: series.posterUrl,
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => PlayerScreen(
+                                  title:
+                                      '${series.title} - S${episode.seasonNumber}E${episode.episodeNumber}',
+                                  streamUrl: episode.streamUrl,
+                                  contentId: episode.id,
+                                  contentType: WatchableType.episode,
+                                  posterUrl: series.posterUrl,
+                                ),
                               ),
-                            )),
+                            ),
                           ),
                         ],
                       ),
@@ -87,14 +105,20 @@ class SeriesDetailScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            EmptyState(icon: Icons.error_outline, title: 'Erro ao carregar episodios', message: error.toString()),
+        error: (error, _) => EmptyState(
+          icon: Icons.error_outline,
+          title: 'Erro ao carregar episodios',
+          message: error.toString(),
+        ),
       ),
     );
   }
 }
 
-final _episodesFutureProvider = FutureProvider.family<List<Episode>, String>((ref, seriesId) async {
+final _episodesFutureProvider = FutureProvider.family<List<Episode>, String>((
+  ref,
+  seriesId,
+) async {
   final repo = ref.watch(playlistRepositoryProvider);
   final seriesList = await ref.watch(seriesProvider.future);
   final series = seriesList.firstWhere((s) => s.id == seriesId);

@@ -24,14 +24,16 @@ class WatchHistoryScreen extends ConsumerWidget {
             children: [
               Text(
                 'Ultimos assistidos',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Continue seus filmes e episodios exatamente de onde parou.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -40,13 +42,18 @@ class WatchHistoryScreen extends ConsumerWidget {
           child: historyAsync.when(
             data: (history) {
               final entries = history
-                  .where((entry) => entry.contentType != WatchableType.channel && entry.positionSeconds > 0)
+                  .where(
+                    (entry) =>
+                        entry.contentType != WatchableType.channel &&
+                        entry.positionSeconds > 0,
+                  )
                   .toList();
               if (entries.isEmpty) {
                 return const EmptyState(
                   icon: Icons.history_outlined,
                   title: 'Nenhum titulo assistido',
-                  message: 'Comece a assistir a um filme ou episodio para ele aparecer aqui.',
+                  message:
+                      'Comece a assistir a um filme ou episodio para ele aparecer aqui.',
                 );
               }
               return GridView.builder(
@@ -72,8 +79,11 @@ class WatchHistoryScreen extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) =>
-                EmptyState(icon: Icons.error_outline, title: 'Erro ao carregar historico', message: error.toString()),
+            error: (error, _) => EmptyState(
+              icon: Icons.error_outline,
+              title: 'Erro ao carregar historico',
+              message: error.toString(),
+            ),
           ),
         ),
       ],
@@ -97,7 +107,10 @@ class WatchHistoryScreen extends ConsumerWidget {
 
   static int _resumePosition(WatchHistoryEntry entry) {
     final duration = entry.durationSeconds;
-    if (duration != null && duration > 0 && entry.positionSeconds / duration >= .95) return 0;
+    if (duration != null &&
+        duration > 0 &&
+        entry.positionSeconds / duration >= .95)
+      return 0;
     return entry.positionSeconds;
   }
 

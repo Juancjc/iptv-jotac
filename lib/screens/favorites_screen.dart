@@ -21,24 +21,41 @@ class FavoritesScreen extends ConsumerWidget {
     final seriesAsync = ref.watch(allSeriesProvider);
     final historyAsync = ref.watch(watchHistoryProvider);
 
-    final favoriteMovies = (moviesAsync.valueOrNull ?? const <Movie>[]).where((movie) => movie.isFavorite).toList();
+    final favoriteMovies = (moviesAsync.valueOrNull ?? const <Movie>[])
+        .where((movie) => movie.isFavorite)
+        .toList();
     final favoriteSeries = (seriesAsync.valueOrNull ?? const <domain.Series>[])
         .where((series) => series.isFavorite)
         .toList();
     final vodHistory = (historyAsync.valueOrNull ?? const <WatchHistoryEntry>[])
-        .where((entry) => entry.contentType != WatchableType.channel && entry.positionSeconds > 0)
+        .where(
+          (entry) =>
+              entry.contentType != WatchableType.channel &&
+              entry.positionSeconds > 0,
+        )
         .toList();
-    final historyByContentId = <String, WatchHistoryEntry>{for (final entry in vodHistory) entry.contentId: entry};
-    final historyByStreamUrl = <String, WatchHistoryEntry>{for (final entry in vodHistory) entry.streamUrl: entry};
+    final historyByContentId = <String, WatchHistoryEntry>{
+      for (final entry in vodHistory) entry.contentId: entry,
+    };
+    final historyByStreamUrl = <String, WatchHistoryEntry>{
+      for (final entry in vodHistory) entry.streamUrl: entry,
+    };
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
-        Text('Favoritos', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+        Text(
+          'Favoritos',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 4),
         Text(
           'Seus filmes e series salvos em um so lugar.',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 28),
         _ContentSection(
@@ -48,14 +65,18 @@ class FavoritesScreen extends ConsumerWidget {
           isLoading: moviesAsync.isLoading && !moviesAsync.hasValue,
           error: moviesAsync.error,
           children: favoriteMovies.map((movie) {
-            final history = historyByContentId[movie.id] ?? historyByStreamUrl[movie.streamUrl];
+            final history =
+                historyByContentId[movie.id] ??
+                historyByStreamUrl[movie.streamUrl];
             return ContentCard(
               title: movie.title,
               imageUrl: movie.posterUrl,
               subtitle: history == null ? null : _progressLabel(history),
               progress: history == null ? null : _progress(history),
               isFavorite: true,
-              onToggleFavorite: () => ref.read(playlistRepositoryProvider).toggleMovieFavorite(movie.id, false),
+              onToggleFavorite: () => ref
+                  .read(playlistRepositoryProvider)
+                  .toggleMovieFavorite(movie.id, false),
               onTap: () => _openMovie(context, movie, history),
             );
           }).toList(),
@@ -73,9 +94,14 @@ class FavoritesScreen extends ConsumerWidget {
                 title: series.title,
                 imageUrl: series.posterUrl,
                 isFavorite: true,
-                onToggleFavorite: () => ref.read(playlistRepositoryProvider).toggleSeriesFavorite(series.id, false),
-                onTap: () =>
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: series))),
+                onToggleFavorite: () => ref
+                    .read(playlistRepositoryProvider)
+                    .toggleSeriesFavorite(series.id, false),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SeriesDetailScreen(series: series),
+                  ),
+                ),
               ),
           ],
         ),
@@ -83,7 +109,11 @@ class FavoritesScreen extends ConsumerWidget {
     );
   }
 
-  static void _openMovie(BuildContext context, Movie movie, WatchHistoryEntry? history) {
+  static void _openMovie(
+    BuildContext context,
+    Movie movie,
+    WatchHistoryEntry? history,
+  ) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
@@ -100,7 +130,9 @@ class FavoritesScreen extends ConsumerWidget {
 
   static int _resumePosition(WatchHistoryEntry entry) {
     final duration = entry.durationSeconds;
-    if (duration != null && duration > 0 && entry.positionSeconds / duration >= .95) {
+    if (duration != null &&
+        duration > 0 &&
+        entry.positionSeconds / duration >= .95) {
       return 0;
     }
     return entry.positionSeconds;
@@ -159,20 +191,33 @@ class _ContentSection extends StatelessWidget {
             Icon(icon, color: colors.primary),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              child: Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
             ),
             if (children.isNotEmpty)
               Text(
                 '${children.length}',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(color: colors.onSurfaceVariant),
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
           ],
         ),
         const SizedBox(height: 14),
         if (isLoading)
-          const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))
+          const SizedBox(
+            height: 120,
+            child: Center(child: CircularProgressIndicator()),
+          )
         else if (error != null)
-          _SectionMessage(icon: Icons.error_outline, message: 'Nao foi possivel carregar esta secao.')
+          _SectionMessage(
+            icon: Icons.error_outline,
+            message: 'Nao foi possivel carregar esta secao.',
+          )
         else if (children.isEmpty)
           _SectionMessage(icon: Icons.inbox_outlined, message: emptyMessage)
         else
@@ -214,7 +259,10 @@ class _SectionMessage extends StatelessWidget {
           Icon(icon, color: colors.onSurfaceVariant),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(message, style: TextStyle(color: colors.onSurfaceVariant)),
+            child: Text(
+              message,
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
           ),
         ],
       ),

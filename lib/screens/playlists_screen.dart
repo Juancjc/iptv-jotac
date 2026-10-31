@@ -32,18 +32,26 @@ class PlaylistsScreen extends ConsumerWidget {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text('Minhas listas', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                'Minhas listas',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               FilledButton.icon(
                 autofocus: playlists.isEmpty,
                 icon: const Icon(Icons.add),
                 label: const Text('Adicionar lista'),
-                onPressed: () => showDialog<void>(context: context, builder: (_) => const AddPlaylistScreen()),
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const AddPlaylistScreen(),
+                ),
               ),
               if (playlists.length > 1)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.sync),
                   label: const Text('Atualizar todas'),
-                  onPressed: syncingIds.isNotEmpty ? null : () => _syncAll(context, ref, playlists),
+                  onPressed: syncingIds.isNotEmpty
+                      ? null
+                      : () => _syncAll(context, ref, playlists),
                 ),
             ],
           ),
@@ -58,7 +66,8 @@ class PlaylistsScreen extends ConsumerWidget {
                 child: EmptyState(
                   icon: Icons.playlist_add,
                   title: 'Nenhuma lista cadastrada',
-                  message: 'Adicione uma lista M3U ou Xtream Codes para comecar.',
+                  message:
+                      'Adicione uma lista M3U ou Xtream Codes para comecar.',
                 ),
               ),
             ],
@@ -71,7 +80,10 @@ class PlaylistsScreen extends ConsumerWidget {
             header,
             for (final (index, playlist) in playlists.indexed)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 child: PlaylistCard(
                   playlist: playlist,
                   syncing: syncingIds.contains(playlist.id),
@@ -84,11 +96,16 @@ class PlaylistsScreen extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Erro ao carregar listas: $error')),
+      error: (error, _) =>
+          Center(child: Text('Erro ao carregar listas: $error')),
     );
   }
 
-  Future<void> _syncAll(BuildContext context, WidgetRef ref, List<Playlist> playlists) async {
+  Future<void> _syncAll(
+    BuildContext context,
+    WidgetRef ref,
+    List<Playlist> playlists,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final errorColor = Theme.of(context).colorScheme.error;
     final controller = ref.read(playlistSyncControllerProvider);
@@ -103,7 +120,9 @@ class PlaylistsScreen extends ConsumerWidget {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          failed.isEmpty ? 'Todas as listas foram atualizadas' : 'Falha ao atualizar: ${failed.join(', ')}',
+          failed.isEmpty
+              ? 'Todas as listas foram atualizadas'
+              : 'Falha ao atualizar: ${failed.join(', ')}',
         ),
         backgroundColor: failed.isEmpty ? null : errorColor,
       ),
@@ -139,9 +158,15 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
     final theme = Theme.of(context);
     final playlist = widget.playlist;
     final busy = widget.syncing || _deleting;
-    final source = playlist.type == PlaylistType.m3u ? playlist.m3uUrl ?? '' : playlist.xtreamHost ?? '';
-    final status = ref.watch(playlistSyncStatusProvider.select((map) => map[playlist.id]));
-    final syncError = ref.watch(playlistSyncErrorsProvider.select((map) => map[playlist.id]));
+    final source = playlist.type == PlaylistType.m3u
+        ? playlist.m3uUrl ?? ''
+        : playlist.xtreamHost ?? '';
+    final status = ref.watch(
+      playlistSyncStatusProvider.select((map) => map[playlist.id]),
+    );
+    final syncError = ref.watch(
+      playlistSyncErrorsProvider.select((map) => map[playlist.id]),
+    );
 
     return Card(
       shape: widget.connected
@@ -158,7 +183,11 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
             if (playlist.isInsecure) const InsecureConnectionBanner(),
             Row(
               children: [
-                Icon(playlist.type == PlaylistType.m3u ? Icons.link : Icons.dns_outlined),
+                Icon(
+                  playlist.type == PlaylistType.m3u
+                      ? Icons.link
+                      : Icons.dns_outlined,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -167,19 +196,27 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(playlist.name, style: theme.textTheme.titleSmall, overflow: TextOverflow.ellipsis),
+                            child: Text(
+                              playlist.name,
+                              style: theme.textTheme.titleSmall,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           if (widget.connected) ...[
                             const SizedBox(width: 8),
                             Text(
                               'Conectada',
-                              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
                           ],
                         ],
                       ),
                       Text(
-                        playlist.type == PlaylistType.m3u ? 'M3U · $source' : 'Xtream · $source',
+                        playlist.type == PlaylistType.m3u
+                            ? 'M3U · $source'
+                            : 'Xtream · $source',
                         style: theme.textTheme.bodySmall,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -189,7 +226,9 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
                             : playlist.lastSyncedAt == null
                             ? 'Ainda nao atualizada'
                             : 'Ultima atualizacao: ${_formatDate(playlist.lastSyncedAt!)}',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
                       ),
                     ],
                   ),
@@ -197,7 +236,11 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
                 if (busy)
                   const Padding(
                     padding: EdgeInsets.all(8),
-                    child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   ),
               ],
             ),
@@ -211,7 +254,9 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Falha na ultima atualizacao: $syncError',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -223,7 +268,11 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
               children: [
                 FilledButton.tonalIcon(
                   autofocus: widget.autofocus,
-                  icon: Icon(widget.connected ? Icons.check_circle : Icons.power_settings_new),
+                  icon: Icon(
+                    widget.connected
+                        ? Icons.check_circle
+                        : Icons.power_settings_new,
+                  ),
                   label: Text(widget.connected ? 'Conectada' : 'Conectar'),
                   onPressed: busy ? null : _connect,
                 ),
@@ -240,7 +289,9 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
                 TextButton.icon(
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('Excluir'),
-                  style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
                   onPressed: busy ? null : _confirmRemove,
                 ),
               ],
@@ -273,14 +324,18 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
     try {
       await ref.read(playlistSyncControllerProvider).sync(playlist);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lista "${playlist.name}" atualizada')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lista "${playlist.name}" atualizada')),
+        );
       }
       return true;
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Nao foi possivel atualizar "${playlist.name}": $error'),
+            content: Text(
+              'Nao foi possivel atualizar "${playlist.name}": $error',
+            ),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -290,7 +345,10 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
   }
 
   Future<void> _edit() async {
-    await showDialog<void>(context: context, builder: (_) => AddPlaylistScreen(playlist: widget.playlist));
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AddPlaylistScreen(playlist: widget.playlist),
+    );
   }
 
   Future<void> _confirmRemove() async {
@@ -298,13 +356,23 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        icon: Icon(Icons.delete_forever_outlined, color: Theme.of(context).colorScheme.error),
+        icon: Icon(
+          Icons.delete_forever_outlined,
+          color: Theme.of(context).colorScheme.error,
+        ),
         title: const Text('Excluir lista?'),
-        content: Text('A lista "${playlist.name}" e todo o conteudo associado serao excluidos deste dispositivo.'),
+        content: Text(
+          'A lista "${playlist.name}" e todo o conteudo associado serao excluidos deste dispositivo.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Excluir'),
           ),
@@ -320,7 +388,9 @@ class _PlaylistCardState extends ConsumerState<PlaylistCard> {
         ref.read(selectedPlaylistIdProvider.notifier).state = null;
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lista "${playlist.name}" excluida')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lista "${playlist.name}" excluida')),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

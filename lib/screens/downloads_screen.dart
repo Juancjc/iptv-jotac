@@ -16,7 +16,8 @@ class DownloadsScreen extends ConsumerWidget {
       return const EmptyState(
         icon: Icons.download_outlined,
         title: 'Nenhum download em andamento',
-        message: 'Toque no icone de download em um filme ou episodio para baixa-lo.',
+        message:
+            'Toque no icone de download em um filme ou episodio para baixa-lo.',
       );
     }
 
@@ -34,34 +35,53 @@ class DownloadsScreen extends ConsumerWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(item.title, style: Theme.of(context).textTheme.titleSmall, overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        item.title,
+                        style: Theme.of(context).textTheme.titleSmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     _StatusChip(status: item.status),
                   ],
                 ),
                 const SizedBox(height: 8),
-                LinearProgressIndicator(value: item.status == DownloadStatus.queued ? null : item.progress),
+                LinearProgressIndicator(
+                  value: item.status == DownloadStatus.queued
+                      ? null
+                      : item.progress,
+                ),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_subtitleFor(item), style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      _subtitleFor(item),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                     Row(
                       children: [
-                        if (item.status == DownloadStatus.downloading || item.status == DownloadStatus.queued)
+                        if (item.status == DownloadStatus.downloading ||
+                            item.status == DownloadStatus.queued)
                           TextButton(
-                            onPressed: () => ref.read(downloadsProvider.notifier).cancel(item.id),
+                            onPressed: () => ref
+                                .read(downloadsProvider.notifier)
+                                .cancel(item.id),
                             child: const Text('Cancelar'),
                           ),
-                        if (item.status == DownloadStatus.failed || item.status == DownloadStatus.canceled)
+                        if (item.status == DownloadStatus.failed ||
+                            item.status == DownloadStatus.canceled)
                           TextButton(
-                            onPressed: () => ref.read(downloadsProvider.notifier).retry(item.id),
+                            onPressed: () => ref
+                                .read(downloadsProvider.notifier)
+                                .retry(item.id),
                             child: const Text('Repetir'),
                           ),
                         IconButton(
                           icon: const Icon(Icons.close),
                           tooltip: 'Remover',
-                          onPressed: () => ref.read(downloadsProvider.notifier).remove(item.id),
+                          onPressed: () => ref
+                              .read(downloadsProvider.notifier)
+                              .remove(item.id),
                         ),
                       ],
                     ),
@@ -82,7 +102,8 @@ class DownloadsScreen extends ConsumerWidget {
       case DownloadStatus.downloading:
         final total = item.totalBytes;
         if (total != null) {
-          final receivedMb = (item.downloadedBytes / (1024 * 1024)).toStringAsFixed(1);
+          final receivedMb = (item.downloadedBytes / (1024 * 1024))
+              .toStringAsFixed(1);
           final totalMb = (total / (1024 * 1024)).toStringAsFixed(1);
           return '$receivedMb MB / $totalMb MB';
         }
@@ -115,7 +136,14 @@ class _StatusChip extends StatelessWidget {
       DownloadStatus.canceled => ('Cancelado', colors.outline),
     };
     return Chip(
-      label: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
       backgroundColor: color.withValues(alpha: .16),
       side: BorderSide(color: color.withValues(alpha: .4)),
       visualDensity: VisualDensity.compact,

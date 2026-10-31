@@ -126,7 +126,9 @@ class _ColorOptionTile extends StatelessWidget {
                 selected: selected.toARGB32() == entry.value.toARGB32(),
                 onSelected: (_) => onSelected(entry.value),
                 avatar: CircleAvatar(
-                  backgroundColor: entry.value.a == 0 ? theme.colorScheme.surfaceContainerHighest : entry.value,
+                  backgroundColor: entry.value.a == 0
+                      ? theme.colorScheme.surfaceContainerHighest
+                      : entry.value,
                 ),
               ),
           ],

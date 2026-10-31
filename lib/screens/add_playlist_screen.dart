@@ -20,7 +20,8 @@ class AddPlaylistScreen extends ConsumerStatefulWidget {
   ConsumerState<AddPlaylistScreen> createState() => _AddPlaylistScreenState();
 }
 
-class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with SingleTickerProviderStateMixin {
+class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _m3uFormKey = GlobalKey<FormState>();
   final _xtreamFormKey = GlobalKey<FormState>();
@@ -83,7 +84,10 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
       final editing = widget.playlist;
       if (editing != null) {
         await _saveEdits(
-          editing.copyWith(name: _m3uNameController.text.trim(), m3uUrl: _m3uUrlController.text.trim()),
+          editing.copyWith(
+            name: _m3uNameController.text.trim(),
+            m3uUrl: _m3uUrlController.text.trim(),
+          ),
         );
         return;
       }
@@ -151,7 +155,10 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
                 xtreamUsername: submission.xtreamUsername,
                 xtreamPassword: submission.xtreamPassword,
               )
-            : editing.copyWith(name: submission.name, m3uUrl: submission.m3uUrl),
+            : editing.copyWith(
+                name: submission.name,
+                m3uUrl: submission.m3uUrl,
+              ),
       );
       return;
     }
@@ -163,7 +170,10 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             username: submission.xtreamUsername!,
             password: submission.xtreamPassword!,
           )
-        : await repo.addM3uPlaylist(name: submission.name, url: submission.m3uUrl!);
+        : await repo.addM3uPlaylist(
+            name: submission.name,
+            url: submission.m3uUrl!,
+          );
     _closeAndSync(playlist, 'adicionada');
   }
 
@@ -177,11 +187,16 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             username: playlist.xtreamUsername ?? '',
             password: playlist.xtreamPassword ?? '',
           )
-        : PairingSubmission.m3u(name: playlist.name, url: playlist.m3uUrl ?? '');
+        : PairingSubmission.m3u(
+            name: playlist.name,
+            url: playlist.m3uUrl ?? '',
+          );
   }
 
   Future<void> _saveEdits(Playlist edited) async {
-    final updated = await ref.read(playlistRepositoryProvider).updatePlaylist(edited);
+    final updated = await ref
+        .read(playlistRepositoryProvider)
+        .updatePlaylist(edited);
     if (!mounted) return;
     if (_syncAfterSave) {
       _closeAndSync(updated, 'salva');
@@ -196,12 +211,20 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
   void _closeAndSync(Playlist playlist, String action) {
     final messenger = ScaffoldMessenger.of(context);
     final errorColor = Theme.of(context).colorScheme.error;
-    ref.read(playlistSyncControllerProvider).sync(playlist).then(
-      (_) => messenger.showSnackBar(SnackBar(content: Text('Lista "${playlist.name}" carregada'))),
-      onError: (Object error) => messenger.showSnackBar(
-        SnackBar(content: Text('Falha ao carregar "${playlist.name}": $error'), backgroundColor: errorColor),
-      ),
-    );
+    ref
+        .read(playlistSyncControllerProvider)
+        .sync(playlist)
+        .then(
+          (_) => messenger.showSnackBar(
+            SnackBar(content: Text('Lista "${playlist.name}" carregada')),
+          ),
+          onError: (Object error) => messenger.showSnackBar(
+            SnackBar(
+              content: Text('Falha ao carregar "${playlist.name}": $error'),
+              backgroundColor: errorColor,
+            ),
+          ),
+        );
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 6),
@@ -224,19 +247,28 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(_isEditing ? 'Editar lista' : 'Adicionar lista', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                _isEditing ? 'Editar lista' : 'Adicionar lista',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 8),
               TabBar(
                 controller: _tabController,
                 tabs: _isEditing
                     ? const [
                         Tab(icon: Icon(Icons.tv, size: 18), text: 'Pela TV'),
-                        Tab(icon: Icon(Icons.qr_code, size: 18), text: 'Pelo celular'),
+                        Tab(
+                          icon: Icon(Icons.qr_code, size: 18),
+                          text: 'Pelo celular',
+                        ),
                       ]
                     : const [
                         Tab(text: 'URL M3U'),
                         Tab(text: 'Xtream Codes'),
-                        Tab(icon: Icon(Icons.qr_code, size: 18), text: 'QR Code'),
+                        Tab(
+                          icon: Icon(Icons.qr_code, size: 18),
+                          text: 'QR Code',
+                        ),
                       ],
               ),
               const SizedBox(height: 16),
@@ -246,17 +278,28 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
                   animation: _tabController,
                   builder: (context, _) {
                     if (_tabController.index == _qrTabIndex) {
-                      return _QrPairingTab(initial: _pairingInitial, onSubmission: _handlePairingSubmission);
+                      return _QrPairingTab(
+                        initial: _pairingInitial,
+                        onSubmission: _handlePairingSubmission,
+                      );
                     }
-                    if (_isEditing) return _editingXtream ? _buildXtreamForm() : _buildM3uForm();
-                    return _tabController.index == 0 ? _buildM3uForm() : _buildXtreamForm();
+                    if (_isEditing)
+                      return _editingXtream
+                          ? _buildXtreamForm()
+                          : _buildM3uForm();
+                    return _tabController.index == 0
+                        ? _buildM3uForm()
+                        : _buildXtreamForm();
                   },
                 ),
               ),
               if (_isEditing)
                 CheckboxListTile(
                   value: _syncAfterSave,
-                  onChanged: _submitting ? null : (value) => setState(() => _syncAfterSave = value ?? true),
+                  onChanged: _submitting
+                      ? null
+                      : (value) =>
+                            setState(() => _syncAfterSave = value ?? true),
                   title: const Text('Atualizar o conteudo da lista ao salvar'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
@@ -264,26 +307,44 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
                 ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
                     child: const Text('Cancelar'),
                   ),
                   const SizedBox(width: 8),
                   AnimatedBuilder(
                     animation: _tabController,
                     builder: (context, _) {
-                      if (_tabController.index == _qrTabIndex) return const SizedBox.shrink();
-                      final submitXtream = _isEditing ? _editingXtream : _tabController.index == 1;
+                      if (_tabController.index == _qrTabIndex)
+                        return const SizedBox.shrink();
+                      final submitXtream = _isEditing
+                          ? _editingXtream
+                          : _tabController.index == 1;
                       return FilledButton(
-                        onPressed: _submitting ? null : (submitXtream ? _submitXtream : _submitM3u),
+                        onPressed: _submitting
+                            ? null
+                            : (submitXtream ? _submitXtream : _submitM3u),
                         child: _submitting
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : Text(_isEditing ? 'Salvar' : 'Adicionar'),
                       );
                     },
@@ -307,7 +368,8 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             decoration: const InputDecoration(labelText: 'Nome da lista'),
             autofocus: true,
             textInputAction: TextInputAction.next,
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -337,21 +399,26 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             decoration: const InputDecoration(labelText: 'Nome da lista'),
             autofocus: true,
             textInputAction: TextInputAction.next,
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _xtreamHostController,
-            decoration: const InputDecoration(labelText: 'Host (http(s)://host:porta)'),
+            decoration: const InputDecoration(
+              labelText: 'Host (http(s)://host:porta)',
+            ),
             textInputAction: TextInputAction.next,
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o host' : null,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Informe o host' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _xtreamUserController,
             decoration: const InputDecoration(labelText: 'Usuario'),
             textInputAction: TextInputAction.next,
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o usuario' : null,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Informe o usuario' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -360,7 +427,8 @@ class _AddPlaylistScreenState extends ConsumerState<AddPlaylistScreen> with Sing
             obscureText: true,
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => _submitXtream(),
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe a senha' : null,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Informe a senha' : null,
           ),
         ],
       ),
@@ -402,7 +470,10 @@ class _QrPairingTabState extends State<_QrPairingTab> {
       _subscription = _server.submissions.listen(_handleSubmission);
       if (mounted) setState(() => _url = url);
     } catch (e) {
-      if (mounted) setState(() => _startError = 'Nao foi possivel iniciar o servidor local: $e');
+      if (mounted)
+        setState(
+          () => _startError = 'Nao foi possivel iniciar o servidor local: $e',
+        );
     }
   }
 
@@ -416,7 +487,10 @@ class _QrPairingTabState extends State<_QrPairingTab> {
       await widget.onSubmission(submission);
     } catch (e) {
       final action = widget.initial == null ? 'adicionar' : 'salvar';
-      if (mounted) setState(() => _submissionError = 'Falha ao $action a lista recebida: $e');
+      if (mounted)
+        setState(
+          () => _submissionError = 'Falha ao $action a lista recebida: $e',
+        );
     } finally {
       if (mounted) setState(() => _processing = false);
     }
@@ -435,7 +509,11 @@ class _QrPairingTabState extends State<_QrPairingTab> {
 
     if (_startError != null) {
       return Center(
-        child: Text(_startError!, textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.error)),
+        child: Text(
+          _startError!,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: theme.colorScheme.error),
+        ),
       );
     }
 
@@ -456,27 +534,46 @@ class _QrPairingTabState extends State<_QrPairingTab> {
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: QrImageView(data: link, size: 170, backgroundColor: Colors.white),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: QrImageView(
+              data: link,
+              size: 170,
+              backgroundColor: Colors.white,
+            ),
           ),
           const SizedBox(height: 12),
           Text(
             'Ou acesse pelo navegador do celular:',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
           ),
-          SelectableText(link, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+          SelectableText(
+            link,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
           const SizedBox(height: 16),
           if (_processing)
             const CircularProgressIndicator()
           else
             Text(
               'Aguardando dados do celular...',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
             ),
           if (_submissionError != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(_submissionError!, textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.error)),
+              child: Text(
+                _submissionError!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
             ),
         ],
       ),
