@@ -84,9 +84,10 @@ class RemoteControlServer {
 
   HttpServer? _server;
 
-  RemoteControlServer(this.handler, {String? accessCode}) : accessCode = accessCode ?? _randomCode();
+  RemoteControlServer(this.handler, {String? accessCode}) : accessCode = accessCode ?? generateAccessCode();
 
-  static String _randomCode() {
+  /// Random code for the phone link (6 easy-to-read characters).
+  static String generateAccessCode() {
     const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
     final random = Random.secure();
     return List.generate(6, (_) => chars[random.nextInt(chars.length)]).join();

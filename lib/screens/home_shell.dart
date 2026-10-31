@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../navigation.dart';
 
 import '../providers/database_provider.dart';
 import '../providers/playlist_providers.dart';
 import '../providers/remote_control_providers.dart';
+import '../widgets/remote_control_dialog.dart';
 import 'add_playlist_screen.dart';
 import 'downloads_screen.dart';
 import 'favorites_screen.dart';
@@ -39,6 +39,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         .read(remoteCommandsProvider)
         .stream
         .listen(_onRemoteCommand);
+    // Turns the phone remote control on by itself when the user chose
+    // "ligar sempre ao abrir o app".
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => ref.read(remoteControlProvider.notifier).initialize(),
+    );
     // Lists change often on the provider side, so they are downloaded again
     // every time the app opens. The cached content stays usable meanwhile.
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncAllPlaylists());
@@ -100,7 +105,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (_) => const _RemoteControlDialog(),
+      builder: (_) => const RemoteControlDialog(),
     );
   }
 
@@ -365,99 +370,6 @@ class _RemoteControlRailButton extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Shows the QR code / address for the phone and lets the user turn the
-/// remote control off.
-class _RemoteControlDialog extends ConsumerWidget {
-  const _RemoteControlDialog();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final remote = ref.watch(remoteControlProvider);
-    final theme = Theme.of(context);
-    final url = remote.url;
-
-    Widget content;
-    if (remote.error != null) {
-      content = Text(
-        remote.error!,
-        style: TextStyle(color: theme.colorScheme.error),
-      );
-    } else if (url == null) {
-      content = const SizedBox(
-        height: 120,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    } else {
-      content = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Fixed size: AlertDialog measures intrinsic widths, which the QR
-          // widget (built on LayoutBuilder) can't answer.
-          SizedBox(
-            width: 186,
-            height: 186,
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(8),
-              child: QrImageView(data: url.toString(), size: 170),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Flexible(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Leia o QR code com o celular (mesma rede Wi-Fi) ou abra no navegador:',
-                ),
-                const SizedBox(height: 8),
-                SelectableText(
-                  url.toString(),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No celular, escolha entre usar so o controle (setas e OK) '
-                  'ou escolher direto o que assistir: listas, canais, filmes '
-                  'e series, com busca.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    return AlertDialog(
-      title: const Text('Controle pelo celular'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: SingleChildScrollView(child: content),
-      ),
-      actions: [
-        if (remote.active)
-          TextButton(
-            onPressed: () {
-              ref.read(remoteControlProvider.notifier).disable();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Desativar'),
-          ),
-        FilledButton(
-          autofocus: true,
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(remote.active ? 'Manter ativo' : 'Fechar'),
-        ),
-      ],
     );
   }
 }

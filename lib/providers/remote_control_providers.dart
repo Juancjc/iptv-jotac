@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/watch_history_entry.dart';
 import '../navigation.dart';
+import '../services/remote_control_preferences.dart';
 import '../services/remote_control_server.dart';
 import 'database_provider.dart';
 import 'playlist_providers.dart';
@@ -49,44 +50,114 @@ class RemoteControlState {
   /// Address (with access code) to open on the phone; set while active.
   final Uri? url;
   final String? error;
+  final RemoteControlPreferences preferences;
 
-  const RemoteControlState({this.starting = false, this.url, this.error});
+  const RemoteControlState({
+    this.starting = false,
+    this.url,
+    this.error,
+    this.preferences = const RemoteControlPreferences(),
+  });
 
   bool get active => url != null;
+
+  RemoteControlState withPreferences(RemoteControlPreferences preferences) =>
+      RemoteControlState(starting: starting, url: url, error: error, preferences: preferences);
 }
 
+final remoteControlPreferencesServiceProvider = Provider<RemoteControlPreferencesService>(
+  (ref) => RemoteControlPreferencesService(),
+);
+
 final remoteControlProvider = StateNotifierProvider<RemoteControlNotifier, RemoteControlState>((ref) {
-  final notifier = RemoteControlNotifier(_AppRemoteHandler(ref));
+  final notifier = RemoteControlNotifier(_AppRemoteHandler(ref), ref.watch(remoteControlPreferencesServiceProvider));
   ref.onDispose(notifier.disable);
   return notifier;
 });
 
-/// Turns the phone remote control (local web server) on and off.
+/// Turns the phone remote control (local web server) on and off, and keeps
+/// the user's choices (start with the app, fixed address).
 class RemoteControlNotifier extends StateNotifier<RemoteControlState> {
   final RemoteControlHandler _handler;
+  final RemoteControlPreferencesService _preferencesService;
   RemoteControlServer? _server;
+  bool _initialized = false;
 
-  RemoteControlNotifier(this._handler) : super(const RemoteControlState());
+  RemoteControlNotifier(this._handler, this._preferencesService) : super(const RemoteControlState());
+
+  RemoteControlPreferences get _prefs => state.preferences;
+
+  /// Loads the saved choices and, if asked to, turns the remote control on
+  /// right away (no dialog, no confirmation). Called once at app start.
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+    final prefs = await _preferencesService.load();
+    if (!mounted) return;
+    state = state.withPreferences(prefs);
+    if (prefs.autoStart) await enable();
+  }
 
   Future<void> enable() async {
     if (state.active || state.starting) return;
-    state = const RemoteControlState(starting: true);
-    final server = RemoteControlServer(_handler);
+    state = RemoteControlState(starting: true, preferences: _prefs);
+    final server = RemoteControlServer(_handler, accessCode: await _accessCodeForStart());
     try {
       final url = await server.start();
       _server = server;
-      if (mounted) state = RemoteControlState(url: url);
+      if (mounted) state = RemoteControlState(url: url, preferences: _prefs);
     } catch (error) {
       await server.stop();
-      if (mounted) state = RemoteControlState(error: 'Nao foi possivel ativar o controle via rede: $error');
+      if (mounted) {
+        state = RemoteControlState(
+          error: 'Nao foi possivel ativar o controle via rede: $error',
+          preferences: _prefs,
+        );
+      }
     }
   }
 
   Future<void> disable() async {
     final server = _server;
     _server = null;
-    if (mounted) state = const RemoteControlState();
+    if (mounted) state = RemoteControlState(preferences: _prefs);
     await server?.stop();
+  }
+
+  Future<void> setAutoStart(bool value) => _savePreferences(_prefs.copyWith(autoStart: value));
+
+  /// With a fixed address the current code is saved and reused; without it a
+  /// new code is made each time the remote control is turned on.
+  Future<void> setKeepAddress(bool value) async {
+    final code = _server?.accessCode;
+    await _savePreferences(
+      value ? _prefs.copyWith(keepAddress: true, accessCode: code) : _prefs.copyWith(keepAddress: false, clearCode: true),
+    );
+  }
+
+  /// Makes a new access code (old phone links stop working) and restarts the
+  /// server with it if it is on.
+  Future<void> regenerateAccessCode() async {
+    final wasActive = state.active;
+    await _savePreferences(_prefs.copyWith(accessCode: RemoteControlServer.generateAccessCode()));
+    if (wasActive) {
+      await disable();
+      await enable();
+    }
+  }
+
+  Future<String> _accessCodeForStart() async {
+    if (!_prefs.keepAddress) return RemoteControlServer.generateAccessCode();
+    final saved = _prefs.accessCode;
+    if (saved != null) return saved;
+    final code = RemoteControlServer.generateAccessCode();
+    await _savePreferences(_prefs.copyWith(accessCode: code));
+    return code;
+  }
+
+  Future<void> _savePreferences(RemoteControlPreferences prefs) async {
+    if (mounted) state = state.withPreferences(prefs);
+    await _preferencesService.save(prefs);
   }
 }
 

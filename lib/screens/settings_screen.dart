@@ -1,7 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/remote_control_providers.dart';
 import '../providers/settings_providers.dart';
+import '../widgets/remote_control_dialog.dart';
+
+/// Whether the phone remote is on, with a button to show its QR code.
+class _RemoteControlStatus extends ConsumerWidget {
+  const _RemoteControlStatus();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final remote = ref.watch(remoteControlProvider);
+    final colors = Theme.of(context).colorScheme;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        remote.active ? Icons.phonelink : Icons.phonelink_off,
+        color: remote.active ? colors.primary : colors.onSurfaceVariant,
+      ),
+      title: Text(remote.active ? 'Ativo' : 'Desligado'),
+      subtitle: remote.active ? Text(remote.url.toString()) : null,
+      trailing: OutlinedButton(
+        onPressed: () async {
+          if (!remote.active) {
+            await ref.read(remoteControlProvider.notifier).enable();
+          }
+          if (context.mounted) {
+            await showDialog<void>(
+              context: context,
+              builder: (_) => const RemoteControlDialog(),
+            );
+          }
+        },
+        child: Text(remote.active ? 'Mostrar QR code' : 'Ligar'),
+      ),
+    );
+  }
+}
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -39,6 +75,13 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        const Divider(height: 32),
+        Text(
+          'Controle pelo celular',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const _RemoteControlStatus(),
+        const RemoteControlOptions(),
         const Divider(height: 32),
         Text('Downloads', style: Theme.of(context).textTheme.titleMedium),
         ListTile(
