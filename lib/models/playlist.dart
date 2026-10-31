@@ -19,6 +19,9 @@ class Playlist {
   final DateTime createdAt;
   final DateTime? lastSyncedAt;
 
+  /// XMLTV program guide URL announced by an M3U list header, if any.
+  final String? epgUrl;
+
   const Playlist({
     required this.id,
     required this.name,
@@ -29,6 +32,7 @@ class Playlist {
     this.xtreamPassword,
     required this.createdAt,
     this.lastSyncedAt,
+    this.epgUrl,
   });
 
   /// Whether the registered source talks plain HTTP (no TLS). Used to warn
@@ -58,6 +62,7 @@ class Playlist {
       xtreamPassword: xtreamPassword ?? this.xtreamPassword,
       createdAt: createdAt,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      epgUrl: epgUrl,
     );
   }
 }

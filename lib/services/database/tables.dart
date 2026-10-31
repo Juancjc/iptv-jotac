@@ -16,6 +16,9 @@ class Playlists extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get lastSyncedAt => dateTime().nullable()();
 
+  /// XMLTV guide URL announced by the M3U header (`url-tvg`/`x-tvg-url`).
+  TextColumn get epgUrl => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -29,6 +32,9 @@ class Channels extends Table {
   TextColumn get category => text().nullable()();
   TextColumn get streamUrl => text()();
   BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
+
+  /// Channel id in the XMLTV guide (`tvg-id` / Xtream `epg_channel_id`).
+  TextColumn get tvgId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

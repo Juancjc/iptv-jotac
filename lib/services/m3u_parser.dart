@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// A single entry parsed out of an M3U/M3U8 playlist, before it is
 /// classified and persisted as a [Channel]/[Movie]/[Episode].
 class M3UEntry {
@@ -28,6 +30,28 @@ class M3UEntry {
 class M3UParser {
   static final RegExp _attributeRegExp = RegExp(r'([a-zA-Z0-9_-]+)="([^"]*)"');
   static final RegExp _titleRegExp = RegExp(r',(.*)$');
+
+  /// Returns the XMLTV guide URL from the `#EXTM3U` header (`url-tvg`,
+  /// `x-tvg-url` or `tvg-url`). Providers sometimes list several URLs
+  /// separated by commas; the first one is used.
+  String? parseEpgUrl(String content) {
+    // Only the header matters; avoid splitting a list of hundreds of MB.
+    final head = content.length > 8192 ? content.substring(0, 8192) : content;
+    for (final rawLine in const LineSplitter().convert(head).take(20)) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      if (!line.startsWith('#EXTM3U')) return null;
+      for (final match in _attributeRegExp.allMatches(line)) {
+        final name = match.group(1)!.toLowerCase();
+        if (name == 'url-tvg' || name == 'x-tvg-url' || name == 'tvg-url') {
+          final url = match.group(2)!.split(',').first.trim();
+          if (url.isNotEmpty) return url;
+        }
+      }
+      return null;
+    }
+    return null;
+  }
 
   /// Parses raw M3U [content] into a list of entries. Lines that don't
   /// conform to the expected format are skipped rather than throwing, since

@@ -8,6 +8,9 @@ class Channel {
   final String streamUrl;
   final bool isFavorite;
 
+  /// Channel id in the program guide (XMLTV `tvg-id`), when known.
+  final String? tvgId;
+
   const Channel({
     required this.id,
     required this.playlistId,
@@ -16,6 +19,7 @@ class Channel {
     this.category,
     required this.streamUrl,
     this.isFavorite = false,
+    this.tvgId,
   });
 
   Channel copyWith({bool? isFavorite}) {
@@ -27,6 +31,7 @@ class Channel {
       category: category,
       streamUrl: streamUrl,
       isFavorite: isFavorite ?? this.isFavorite,
+      tvgId: tvgId,
     );
   }
 }

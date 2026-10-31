@@ -59,6 +59,11 @@ class $PlaylistsTable extends Playlists
   late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
       'last_synced_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _epgUrlMeta = const VerificationMeta('epgUrl');
+  @override
+  late final GeneratedColumn<String> epgUrl = GeneratedColumn<String>(
+      'epg_url', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -69,7 +74,8 @@ class $PlaylistsTable extends Playlists
         xtreamUsername,
         xtreamPassword,
         createdAt,
-        lastSyncedAt
+        lastSyncedAt,
+        epgUrl
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -132,6 +138,10 @@ class $PlaylistsTable extends Playlists
           lastSyncedAt.isAcceptableOrUnknown(
               data['last_synced_at']!, _lastSyncedAtMeta));
     }
+    if (data.containsKey('epg_url')) {
+      context.handle(_epgUrlMeta,
+          epgUrl.isAcceptableOrUnknown(data['epg_url']!, _epgUrlMeta));
+    }
     return context;
   }
 
@@ -159,6 +169,8 @@ class $PlaylistsTable extends Playlists
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       lastSyncedAt: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}last_synced_at']),
+      epgUrl: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}epg_url']),
     );
   }
 
@@ -178,6 +190,9 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
   final String? xtreamPassword;
   final DateTime createdAt;
   final DateTime? lastSyncedAt;
+
+  /// XMLTV guide URL announced by the M3U header (`url-tvg`/`x-tvg-url`).
+  final String? epgUrl;
   const PlaylistRow(
       {required this.id,
       required this.name,
@@ -187,7 +202,8 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
       this.xtreamUsername,
       this.xtreamPassword,
       required this.createdAt,
-      this.lastSyncedAt});
+      this.lastSyncedAt,
+      this.epgUrl});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -209,6 +225,9 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || lastSyncedAt != null) {
       map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
+    if (!nullToAbsent || epgUrl != null) {
+      map['epg_url'] = Variable<String>(epgUrl);
     }
     return map;
   }
@@ -233,6 +252,8 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
       lastSyncedAt: lastSyncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastSyncedAt),
+      epgUrl:
+          epgUrl == null && nullToAbsent ? const Value.absent() : Value(epgUrl),
     );
   }
 
@@ -249,6 +270,7 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
       xtreamPassword: serializer.fromJson<String?>(json['xtreamPassword']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
+      epgUrl: serializer.fromJson<String?>(json['epgUrl']),
     );
   }
   @override
@@ -264,6 +286,7 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
       'xtreamPassword': serializer.toJson<String?>(xtreamPassword),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
+      'epgUrl': serializer.toJson<String?>(epgUrl),
     };
   }
 
@@ -276,7 +299,8 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
           Value<String?> xtreamUsername = const Value.absent(),
           Value<String?> xtreamPassword = const Value.absent(),
           DateTime? createdAt,
-          Value<DateTime?> lastSyncedAt = const Value.absent()}) =>
+          Value<DateTime?> lastSyncedAt = const Value.absent(),
+          Value<String?> epgUrl = const Value.absent()}) =>
       PlaylistRow(
         id: id ?? this.id,
         name: name ?? this.name,
@@ -290,6 +314,7 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
         createdAt: createdAt ?? this.createdAt,
         lastSyncedAt:
             lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
+        epgUrl: epgUrl.present ? epgUrl.value : this.epgUrl,
       );
   PlaylistRow copyWithCompanion(PlaylistsCompanion data) {
     return PlaylistRow(
@@ -309,6 +334,7 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
       lastSyncedAt: data.lastSyncedAt.present
           ? data.lastSyncedAt.value
           : this.lastSyncedAt,
+      epgUrl: data.epgUrl.present ? data.epgUrl.value : this.epgUrl,
     );
   }
 
@@ -323,14 +349,15 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
           ..write('xtreamUsername: $xtreamUsername, ')
           ..write('xtreamPassword: $xtreamPassword, ')
           ..write('createdAt: $createdAt, ')
-          ..write('lastSyncedAt: $lastSyncedAt')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('epgUrl: $epgUrl')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, name, type, m3uUrl, xtreamHost,
-      xtreamUsername, xtreamPassword, createdAt, lastSyncedAt);
+      xtreamUsername, xtreamPassword, createdAt, lastSyncedAt, epgUrl);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -343,7 +370,8 @@ class PlaylistRow extends DataClass implements Insertable<PlaylistRow> {
           other.xtreamUsername == this.xtreamUsername &&
           other.xtreamPassword == this.xtreamPassword &&
           other.createdAt == this.createdAt &&
-          other.lastSyncedAt == this.lastSyncedAt);
+          other.lastSyncedAt == this.lastSyncedAt &&
+          other.epgUrl == this.epgUrl);
 }
 
 class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
@@ -356,6 +384,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
   final Value<String?> xtreamPassword;
   final Value<DateTime> createdAt;
   final Value<DateTime?> lastSyncedAt;
+  final Value<String?> epgUrl;
   final Value<int> rowid;
   const PlaylistsCompanion({
     this.id = const Value.absent(),
@@ -367,6 +396,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
     this.xtreamPassword = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastSyncedAt = const Value.absent(),
+    this.epgUrl = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PlaylistsCompanion.insert({
@@ -379,6 +409,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
     this.xtreamPassword = const Value.absent(),
     required DateTime createdAt,
     this.lastSyncedAt = const Value.absent(),
+    this.epgUrl = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         name = Value(name),
@@ -394,6 +425,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
     Expression<String>? xtreamPassword,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastSyncedAt,
+    Expression<String>? epgUrl,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -406,6 +438,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
       if (xtreamPassword != null) 'xtream_password': xtreamPassword,
       if (createdAt != null) 'created_at': createdAt,
       if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+      if (epgUrl != null) 'epg_url': epgUrl,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -420,6 +453,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
       Value<String?>? xtreamPassword,
       Value<DateTime>? createdAt,
       Value<DateTime?>? lastSyncedAt,
+      Value<String?>? epgUrl,
       Value<int>? rowid}) {
     return PlaylistsCompanion(
       id: id ?? this.id,
@@ -431,6 +465,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
       xtreamPassword: xtreamPassword ?? this.xtreamPassword,
       createdAt: createdAt ?? this.createdAt,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      epgUrl: epgUrl ?? this.epgUrl,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -465,6 +500,9 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
     if (lastSyncedAt.present) {
       map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
     }
+    if (epgUrl.present) {
+      map['epg_url'] = Variable<String>(epgUrl.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -483,6 +521,7 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistRow> {
           ..write('xtreamPassword: $xtreamPassword, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('epgUrl: $epgUrl, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -539,9 +578,14 @@ class $ChannelsTable extends Channels
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_favorite" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _tvgIdMeta = const VerificationMeta('tvgId');
+  @override
+  late final GeneratedColumn<String> tvgId = GeneratedColumn<String>(
+      'tvg_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, playlistId, name, logoUrl, category, streamUrl, isFavorite];
+      [id, playlistId, name, logoUrl, category, streamUrl, isFavorite, tvgId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -591,6 +635,10 @@ class $ChannelsTable extends Channels
           isFavorite.isAcceptableOrUnknown(
               data['is_favorite']!, _isFavoriteMeta));
     }
+    if (data.containsKey('tvg_id')) {
+      context.handle(
+          _tvgIdMeta, tvgId.isAcceptableOrUnknown(data['tvg_id']!, _tvgIdMeta));
+    }
     return context;
   }
 
@@ -614,6 +662,8 @@ class $ChannelsTable extends Channels
           .read(DriftSqlType.string, data['${effectivePrefix}stream_url'])!,
       isFavorite: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_favorite'])!,
+      tvgId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}tvg_id']),
     );
   }
 
@@ -631,6 +681,9 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
   final String? category;
   final String streamUrl;
   final bool isFavorite;
+
+  /// Channel id in the XMLTV guide (`tvg-id` / Xtream `epg_channel_id`).
+  final String? tvgId;
   const ChannelRow(
       {required this.id,
       required this.playlistId,
@@ -638,7 +691,8 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
       this.logoUrl,
       this.category,
       required this.streamUrl,
-      required this.isFavorite});
+      required this.isFavorite,
+      this.tvgId});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -653,6 +707,9 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
     }
     map['stream_url'] = Variable<String>(streamUrl);
     map['is_favorite'] = Variable<bool>(isFavorite);
+    if (!nullToAbsent || tvgId != null) {
+      map['tvg_id'] = Variable<String>(tvgId);
+    }
     return map;
   }
 
@@ -669,6 +726,8 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
           : Value(category),
       streamUrl: Value(streamUrl),
       isFavorite: Value(isFavorite),
+      tvgId:
+          tvgId == null && nullToAbsent ? const Value.absent() : Value(tvgId),
     );
   }
 
@@ -683,6 +742,7 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
       category: serializer.fromJson<String?>(json['category']),
       streamUrl: serializer.fromJson<String>(json['streamUrl']),
       isFavorite: serializer.fromJson<bool>(json['isFavorite']),
+      tvgId: serializer.fromJson<String?>(json['tvgId']),
     );
   }
   @override
@@ -696,6 +756,7 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
       'category': serializer.toJson<String?>(category),
       'streamUrl': serializer.toJson<String>(streamUrl),
       'isFavorite': serializer.toJson<bool>(isFavorite),
+      'tvgId': serializer.toJson<String?>(tvgId),
     };
   }
 
@@ -706,7 +767,8 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
           Value<String?> logoUrl = const Value.absent(),
           Value<String?> category = const Value.absent(),
           String? streamUrl,
-          bool? isFavorite}) =>
+          bool? isFavorite,
+          Value<String?> tvgId = const Value.absent()}) =>
       ChannelRow(
         id: id ?? this.id,
         playlistId: playlistId ?? this.playlistId,
@@ -715,6 +777,7 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
         category: category.present ? category.value : this.category,
         streamUrl: streamUrl ?? this.streamUrl,
         isFavorite: isFavorite ?? this.isFavorite,
+        tvgId: tvgId.present ? tvgId.value : this.tvgId,
       );
   ChannelRow copyWithCompanion(ChannelsCompanion data) {
     return ChannelRow(
@@ -727,6 +790,7 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
       streamUrl: data.streamUrl.present ? data.streamUrl.value : this.streamUrl,
       isFavorite:
           data.isFavorite.present ? data.isFavorite.value : this.isFavorite,
+      tvgId: data.tvgId.present ? data.tvgId.value : this.tvgId,
     );
   }
 
@@ -739,14 +803,15 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
           ..write('logoUrl: $logoUrl, ')
           ..write('category: $category, ')
           ..write('streamUrl: $streamUrl, ')
-          ..write('isFavorite: $isFavorite')
+          ..write('isFavorite: $isFavorite, ')
+          ..write('tvgId: $tvgId')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(
-      id, playlistId, name, logoUrl, category, streamUrl, isFavorite);
+      id, playlistId, name, logoUrl, category, streamUrl, isFavorite, tvgId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -757,7 +822,8 @@ class ChannelRow extends DataClass implements Insertable<ChannelRow> {
           other.logoUrl == this.logoUrl &&
           other.category == this.category &&
           other.streamUrl == this.streamUrl &&
-          other.isFavorite == this.isFavorite);
+          other.isFavorite == this.isFavorite &&
+          other.tvgId == this.tvgId);
 }
 
 class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
@@ -768,6 +834,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
   final Value<String?> category;
   final Value<String> streamUrl;
   final Value<bool> isFavorite;
+  final Value<String?> tvgId;
   final Value<int> rowid;
   const ChannelsCompanion({
     this.id = const Value.absent(),
@@ -777,6 +844,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
     this.category = const Value.absent(),
     this.streamUrl = const Value.absent(),
     this.isFavorite = const Value.absent(),
+    this.tvgId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ChannelsCompanion.insert({
@@ -787,6 +855,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
     this.category = const Value.absent(),
     required String streamUrl,
     this.isFavorite = const Value.absent(),
+    this.tvgId = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         playlistId = Value(playlistId),
@@ -800,6 +869,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
     Expression<String>? category,
     Expression<String>? streamUrl,
     Expression<bool>? isFavorite,
+    Expression<String>? tvgId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -810,6 +880,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
       if (category != null) 'category': category,
       if (streamUrl != null) 'stream_url': streamUrl,
       if (isFavorite != null) 'is_favorite': isFavorite,
+      if (tvgId != null) 'tvg_id': tvgId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -822,6 +893,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
       Value<String?>? category,
       Value<String>? streamUrl,
       Value<bool>? isFavorite,
+      Value<String?>? tvgId,
       Value<int>? rowid}) {
     return ChannelsCompanion(
       id: id ?? this.id,
@@ -831,6 +903,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
       category: category ?? this.category,
       streamUrl: streamUrl ?? this.streamUrl,
       isFavorite: isFavorite ?? this.isFavorite,
+      tvgId: tvgId ?? this.tvgId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -859,6 +932,9 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
     if (isFavorite.present) {
       map['is_favorite'] = Variable<bool>(isFavorite.value);
     }
+    if (tvgId.present) {
+      map['tvg_id'] = Variable<String>(tvgId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -875,6 +951,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelRow> {
           ..write('category: $category, ')
           ..write('streamUrl: $streamUrl, ')
           ..write('isFavorite: $isFavorite, ')
+          ..write('tvgId: $tvgId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3141,6 +3218,7 @@ typedef $$PlaylistsTableCreateCompanionBuilder = PlaylistsCompanion Function({
   Value<String?> xtreamPassword,
   required DateTime createdAt,
   Value<DateTime?> lastSyncedAt,
+  Value<String?> epgUrl,
   Value<int> rowid,
 });
 typedef $$PlaylistsTableUpdateCompanionBuilder = PlaylistsCompanion Function({
@@ -3153,6 +3231,7 @@ typedef $$PlaylistsTableUpdateCompanionBuilder = PlaylistsCompanion Function({
   Value<String?> xtreamPassword,
   Value<DateTime> createdAt,
   Value<DateTime?> lastSyncedAt,
+  Value<String?> epgUrl,
   Value<int> rowid,
 });
 
@@ -3201,6 +3280,11 @@ class $$PlaylistsTableFilterComposer
 
   ColumnFilters<DateTime> get lastSyncedAt => $state.composableBuilder(
       column: $state.table.lastSyncedAt,
+      builder: (column, joinBuilders) =>
+          ColumnFilters(column, joinBuilders: joinBuilders));
+
+  ColumnFilters<String> get epgUrl => $state.composableBuilder(
+      column: $state.table.epgUrl,
       builder: (column, joinBuilders) =>
           ColumnFilters(column, joinBuilders: joinBuilders));
 }
@@ -3252,6 +3336,11 @@ class $$PlaylistsTableOrderingComposer
       column: $state.table.lastSyncedAt,
       builder: (column, joinBuilders) =>
           ColumnOrderings(column, joinBuilders: joinBuilders));
+
+  ColumnOrderings<String> get epgUrl => $state.composableBuilder(
+      column: $state.table.epgUrl,
+      builder: (column, joinBuilders) =>
+          ColumnOrderings(column, joinBuilders: joinBuilders));
 }
 
 class $$PlaylistsTableTableManager extends RootTableManager<
@@ -3283,6 +3372,7 @@ class $$PlaylistsTableTableManager extends RootTableManager<
             Value<String?> xtreamPassword = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime?> lastSyncedAt = const Value.absent(),
+            Value<String?> epgUrl = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PlaylistsCompanion(
@@ -3295,6 +3385,7 @@ class $$PlaylistsTableTableManager extends RootTableManager<
             xtreamPassword: xtreamPassword,
             createdAt: createdAt,
             lastSyncedAt: lastSyncedAt,
+            epgUrl: epgUrl,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -3307,6 +3398,7 @@ class $$PlaylistsTableTableManager extends RootTableManager<
             Value<String?> xtreamPassword = const Value.absent(),
             required DateTime createdAt,
             Value<DateTime?> lastSyncedAt = const Value.absent(),
+            Value<String?> epgUrl = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PlaylistsCompanion.insert(
@@ -3319,6 +3411,7 @@ class $$PlaylistsTableTableManager extends RootTableManager<
             xtreamPassword: xtreamPassword,
             createdAt: createdAt,
             lastSyncedAt: lastSyncedAt,
+            epgUrl: epgUrl,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -3347,6 +3440,7 @@ typedef $$ChannelsTableCreateCompanionBuilder = ChannelsCompanion Function({
   Value<String?> category,
   required String streamUrl,
   Value<bool> isFavorite,
+  Value<String?> tvgId,
   Value<int> rowid,
 });
 typedef $$ChannelsTableUpdateCompanionBuilder = ChannelsCompanion Function({
@@ -3357,6 +3451,7 @@ typedef $$ChannelsTableUpdateCompanionBuilder = ChannelsCompanion Function({
   Value<String?> category,
   Value<String> streamUrl,
   Value<bool> isFavorite,
+  Value<String?> tvgId,
   Value<int> rowid,
 });
 
@@ -3395,6 +3490,11 @@ class $$ChannelsTableFilterComposer
 
   ColumnFilters<bool> get isFavorite => $state.composableBuilder(
       column: $state.table.isFavorite,
+      builder: (column, joinBuilders) =>
+          ColumnFilters(column, joinBuilders: joinBuilders));
+
+  ColumnFilters<String> get tvgId => $state.composableBuilder(
+      column: $state.table.tvgId,
       builder: (column, joinBuilders) =>
           ColumnFilters(column, joinBuilders: joinBuilders));
 }
@@ -3436,6 +3536,11 @@ class $$ChannelsTableOrderingComposer
       column: $state.table.isFavorite,
       builder: (column, joinBuilders) =>
           ColumnOrderings(column, joinBuilders: joinBuilders));
+
+  ColumnOrderings<String> get tvgId => $state.composableBuilder(
+      column: $state.table.tvgId,
+      builder: (column, joinBuilders) =>
+          ColumnOrderings(column, joinBuilders: joinBuilders));
 }
 
 class $$ChannelsTableTableManager extends RootTableManager<
@@ -3465,6 +3570,7 @@ class $$ChannelsTableTableManager extends RootTableManager<
             Value<String?> category = const Value.absent(),
             Value<String> streamUrl = const Value.absent(),
             Value<bool> isFavorite = const Value.absent(),
+            Value<String?> tvgId = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ChannelsCompanion(
@@ -3475,6 +3581,7 @@ class $$ChannelsTableTableManager extends RootTableManager<
             category: category,
             streamUrl: streamUrl,
             isFavorite: isFavorite,
+            tvgId: tvgId,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -3485,6 +3592,7 @@ class $$ChannelsTableTableManager extends RootTableManager<
             Value<String?> category = const Value.absent(),
             required String streamUrl,
             Value<bool> isFavorite = const Value.absent(),
+            Value<String?> tvgId = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ChannelsCompanion.insert(
@@ -3495,6 +3603,7 @@ class $$ChannelsTableTableManager extends RootTableManager<
             category: category,
             streamUrl: streamUrl,
             isFavorite: isFavorite,
+            tvgId: tvgId,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

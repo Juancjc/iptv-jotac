@@ -19,12 +19,14 @@ class XtreamLiveStream {
   final String name;
   final String? streamIcon;
   final String? categoryId;
+  final String? epgChannelId;
 
   const XtreamLiveStream({
     required this.streamId,
     required this.name,
     this.streamIcon,
     this.categoryId,
+    this.epgChannelId,
   });
 
   factory XtreamLiveStream.fromJson(Map<String, dynamic> json) {
@@ -33,6 +35,7 @@ class XtreamLiveStream {
       name: json['name']?.toString() ?? 'Sem nome',
       streamIcon: json['stream_icon']?.toString(),
       categoryId: json['category_id']?.toString(),
+      epgChannelId: json['epg_channel_id']?.toString(),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,9 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../models/channel.dart';
 import '../models/watch_history_entry.dart';
 import '../providers/database_provider.dart';
+import '../providers/epg_providers.dart';
 import '../providers/playlist_providers.dart';
+import '../services/epg_service.dart';
 import '../widgets/empty_state.dart';
 import 'player_screen.dart';
 
@@ -724,6 +727,7 @@ class _InlineChannelPlayerState extends State<_InlineChannelPlayer> {
             ),
           ),
           Expanded(
+            flex: 3,
             child: GestureDetector(
               onDoubleTap: widget.onFullscreen,
               // Android/Fire TV: the built-in controls aren't reachable with a
@@ -736,8 +740,124 @@ class _InlineChannelPlayerState extends State<_InlineChannelPlayer> {
               ),
             ),
           ),
+          Expanded(flex: 2, child: _ChannelEpgPanel(channel: widget.channel)),
         ],
       ),
     );
+  }
+}
+
+/// Program guide under the preview: the channel name and its schedule, with
+/// the program on air highlighted.
+class _ChannelEpgPanel extends ConsumerStatefulWidget {
+  final Channel channel;
+
+  const _ChannelEpgPanel({required this.channel});
+
+  @override
+  ConsumerState<_ChannelEpgPanel> createState() => _ChannelEpgPanelState();
+}
+
+class _ChannelEpgPanelState extends ConsumerState<_ChannelEpgPanel> {
+  static const _onAirColor = Color(0xFFFFD54F);
+
+  /// Moves the "on air" highlight along as programs end.
+  Timer? _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = widget.channel.epgKey;
+    final epgAsync = ref.watch(channelEpgProvider(key));
+    final now = DateTime.now();
+    final muted = Colors.white.withValues(alpha: .6);
+
+    Widget body = epgAsync.when(
+      loading: () => _message('Carregando programacao...', muted),
+      error: (_, _) => _message('Programacao indisponivel', muted),
+      data: (programs) {
+        final upcoming = programs.where((p) => p.end.isAfter(now)).toList();
+        if (upcoming.isEmpty) {
+          // Short guides run out after a few hours; fetch the next batch.
+          if (programs.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) ref.invalidate(channelEpgProvider(key));
+            });
+          }
+          return _message('Programacao indisponivel', muted);
+        }
+        return ListView.builder(
+          padding: EdgeInsets.zero,
+          itemCount: upcoming.length,
+          itemBuilder: (context, index) => _programLine(upcoming[index], now),
+        );
+      },
+    );
+
+    return Container(
+      width: double.infinity,
+      color: Colors.black,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.channel.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
+
+  Widget _programLine(EpgProgram program, DateTime now) {
+    final onAir = program.isLiveAt(now);
+    final color = onAir ? _onAirColor : Colors.white.withValues(alpha: .85);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        '${_time(program.start)} ~ ${_time(program.end)}   ${program.title}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 14,
+          fontWeight: onAir ? FontWeight.w600 : FontWeight.w400,
+        ),
+      ),
+    );
+  }
+
+  Widget _message(String text, Color color) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(text, style: TextStyle(color: color, fontSize: 13)),
+    );
+  }
+
+  static String _time(DateTime t) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}';
   }
 }

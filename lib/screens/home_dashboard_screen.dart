@@ -18,7 +18,8 @@ class HomeDashboardScreen extends ConsumerWidget {
       builder: (context, constraints) => SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
         child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight - 80),
+          constraints: BoxConstraints(minHeight: (constraints.maxHeight - 80).clamp(0.0, double.infinity),
+          ),
           child: Center(
             child: Wrap(
               alignment: WrapAlignment.center,

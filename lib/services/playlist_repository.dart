@@ -171,6 +171,10 @@ class PlaylistRepository {
       favoriteSeriesTitles,
     );
 
+    await (_db.update(_db.playlists)..where((t) => t.id.equals(playlist.id))).write(
+      PlaylistsCompanion(epgUrl: Value(rows.epgUrl)),
+    );
+
     final total = rows.total;
     var saved = 0;
     void reportSaved() => onProgress?.call('Salvando $saved de $total itens...', total == 0 ? null : saved / total);
@@ -222,6 +226,7 @@ class PlaylistRepository {
         category: Value(s.categoryId),
         streamUrl: streamUrl,
         isFavorite: Value(favoriteChannelUrls.contains(streamUrl)),
+        tvgId: Value(s.epgChannelId),
       );
     }).toList();
 
@@ -431,6 +436,7 @@ class PlaylistRepository {
       xtreamPassword: row.xtreamPassword,
       createdAt: row.createdAt,
       lastSyncedAt: row.lastSyncedAt,
+      epgUrl: row.epgUrl,
     );
   }
 
@@ -443,6 +449,7 @@ class PlaylistRepository {
       category: row.category,
       streamUrl: row.streamUrl,
       isFavorite: row.isFavorite,
+      tvgId: row.tvgId,
     );
   }
 
@@ -520,8 +527,9 @@ class _M3uRows {
   final List<MoviesCompanion> movies;
   final List<SeriesTableCompanion> series;
   final List<EpisodesCompanion> episodes;
+  final String? epgUrl;
 
-  const _M3uRows(this.channels, this.movies, this.series, this.episodes);
+  const _M3uRows(this.channels, this.movies, this.series, this.episodes, this.epgUrl);
 
   int get total => channels.length + movies.length + series.length + episodes.length;
 }
@@ -550,7 +558,9 @@ _M3uRows _buildM3uRows(
   Set<String> favoriteMovieUrls,
   Set<String> favoriteSeriesTitles,
 ) {
-  final entries = M3UParser().parse(utf8.decode(bytes, allowMalformed: true));
+  final content = utf8.decode(bytes, allowMalformed: true);
+  final parser = M3UParser();
+  final entries = parser.parse(content);
 
   final channelRows = <ChannelsCompanion>[];
   final movieRows = <MoviesCompanion>[];
@@ -572,6 +582,7 @@ _M3uRows _buildM3uRows(
             category: Value(entry.groupTitle),
             streamUrl: entry.url,
             isFavorite: Value(favoriteChannelUrls.contains(entry.url)),
+            tvgId: Value(entry.tvgId),
           ),
         );
       case _M3uKind.movie:
@@ -617,7 +628,7 @@ _M3uRows _buildM3uRows(
     }
   }
 
-  return _M3uRows(channelRows, movieRows, seriesRows, episodeRows);
+  return _M3uRows(channelRows, movieRows, seriesRows, episodeRows, parser.parseEpgUrl(content));
 }
 
 _M3uClassification _classifyM3uEntry(M3UEntry entry) {

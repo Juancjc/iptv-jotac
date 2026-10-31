@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/database_provider.dart';
 import '../providers/playlist_providers.dart';
 import 'add_playlist_screen.dart';
 import 'downloads_screen.dart';
@@ -23,14 +24,49 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Lists change often on the provider side, so they are downloaded again
+    // every time the app opens. The cached content stays usable meanwhile.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncAllPlaylists());
+  }
+
+  Future<void> _syncAllPlaylists() async {
+    final playlists = await ref
+        .read(playlistRepositoryProvider)
+        .watchPlaylists()
+        .first;
+    final controller = ref.read(playlistSyncControllerProvider);
+    // One at a time: TV boxes have little memory for parsing big lists.
+    for (final playlist in playlists) {
+      if (!mounted) return;
+      if (ref.read(syncingPlaylistIdsProvider).contains(playlist.id)) continue;
+      try {
+        await controller.sync(playlist);
+      } catch (_) {
+        // Recorded in playlistSyncErrorsProvider and shown on the Listas tab;
+        // the previously downloaded content keeps working.
+      }
+    }
+  }
+
   static const _destinations = [
-    NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: Text('Inicio')),
+    NavigationRailDestination(
+      icon: Icon(Icons.home_outlined),
+      selectedIcon: Icon(Icons.home),
+      label: Text('Inicio'),
+    ),
     NavigationRailDestination(
       icon: Icon(Icons.live_tv_outlined),
       selectedIcon: Icon(Icons.live_tv),
       label: Text('TV ao vivo'),
     ),
-    NavigationRailDestination(icon: Icon(Icons.movie_outlined), selectedIcon: Icon(Icons.movie), label: Text('Filmes')),
+    NavigationRailDestination(
+      icon: Icon(Icons.movie_outlined),
+      selectedIcon: Icon(Icons.movie),
+      label: Text('Filmes'),
+    ),
     NavigationRailDestination(
       icon: Icon(Icons.video_library_outlined),
       selectedIcon: Icon(Icons.video_library),
@@ -71,8 +107,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final screens = [
       HomeDashboardScreen(onSectionSelected: _selectSection),
       const LiveTvScreen(),
-      MoviesScreen(onShowMovies: () => _selectSection(2), onShowSeries: () => _selectSection(3)),
-      SeriesScreen(onShowMovies: () => _selectSection(2), onShowSeries: () => _selectSection(3)),
+      MoviesScreen(
+        onShowMovies: () => _selectSection(2),
+        onShowSeries: () => _selectSection(3),
+      ),
+      SeriesScreen(
+        onShowMovies: () => _selectSection(2),
+        onShowSeries: () => _selectSection(3),
+      ),
       const FavoritesScreen(),
       const WatchHistoryScreen(),
       const DownloadsScreen(),
@@ -83,7 +125,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('IPTV Jotac'),
-        bottom: syncStatuses.isEmpty ? null : _SyncProgressBar(statuses: syncStatuses.values.toList()),
+        bottom: syncStatuses.isEmpty
+            ? null
+            : _SyncProgressBar(statuses: syncStatuses.values.toList()),
         actions: [
           playlistsAsync.when(
             data: (playlists) => Padding(
@@ -93,11 +137,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 hint: const Text('Todas as listas'),
                 underline: const SizedBox.shrink(),
                 items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('Todas as listas')),
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Todas as listas'),
+                  ),
                   for (final playlist in playlists)
-                    DropdownMenuItem<String?>(value: playlist.id, child: Text(playlist.name)),
+                    DropdownMenuItem<String?>(
+                      value: playlist.id,
+                      child: Text(playlist.name),
+                    ),
                 ],
-                onChanged: (value) => ref.read(selectedPlaylistIdProvider.notifier).state = value,
+                onChanged: (value) =>
+                    ref.read(selectedPlaylistIdProvider.notifier).state = value,
               ),
             ),
             loading: () => const SizedBox.shrink(),
@@ -106,7 +157,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'Adicionar lista',
-            onPressed: () => showDialog<void>(context: context, builder: (_) => const AddPlaylistScreen()),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const AddPlaylistScreen(),
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -134,7 +188,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
-              child: KeyedSubtree(key: ValueKey(_index), child: screens[_index]),
+              child: KeyedSubtree(
+                key: ValueKey(_index),
+                child: screens[_index],
+              ),
             ),
           ),
         ],
