@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// A poster/logo card used across the live TV, movies and series grids.
-class ContentCard extends StatelessWidget {
+class ContentCard extends StatefulWidget {
   final String title;
   final String? imageUrl;
   final String? subtitle;
@@ -24,80 +24,145 @@ class ContentCard extends StatelessWidget {
   });
 
   @override
+  State<ContentCard> createState() => _ContentCardState();
+}
+
+class _ContentCardState extends State<ContentCard> {
+  bool _focused = false;
+  bool _hovered = false;
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _Poster(imageUrl: imageUrl),
-                  if (onToggleFavorite != null)
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Material(
-                        color: Colors.black45,
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          iconSize: 18,
-                          icon: Icon(
-                            isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: isFavorite ? Colors.redAccent : Colors.white,
+    final active = _focused || _hovered;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active ? theme.colorScheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onTap,
+            onFocusChange: (focused) {
+              setState(() => _focused = focused);
+              if (focused) {
+                Scrollable.ensureVisible(
+                  context,
+                  alignment: .5,
+                  duration: const Duration(milliseconds: 180),
+                );
+              }
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _Poster(imageUrl: widget.imageUrl),
+                      if (active)
+                        const Center(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Padding(
+                              padding: EdgeInsets.all(10),
+                              child: Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                            ),
                           ),
-                          onPressed: onToggleFavorite,
                         ),
-                      ),
-                    ),
-                  if (onDownload != null)
-                    Positioned(
-                      top: 4,
-                      left: 4,
-                      child: Material(
-                        color: Colors.black45,
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          iconSize: 18,
-                          icon: const Icon(Icons.download_outlined, color: Colors.white),
-                          onPressed: onDownload,
+                      if (widget.onToggleFavorite != null)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Material(
+                            color: Colors.black45,
+                            shape: const CircleBorder(),
+                            child: IconButton(
+                              tooltip: widget.isFavorite
+                                  ? 'Remover dos favoritos'
+                                  : 'Adicionar aos favoritos',
+                              iconSize: 18,
+                              icon: Icon(
+                                widget.isFavorite
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                color: widget.isFavorite
+                                    ? theme.colorScheme.primary
+                                    : Colors.white,
+                              ),
+                              onPressed: widget.onToggleFavorite,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (progress != null)
-              LinearProgressIndicator(
-                value: progress!.clamp(0.0, 1.0),
-                minHeight: 4,
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ),
-            if (subtitle != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                child: Text(
-                  subtitle!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                      if (widget.onDownload != null)
+                        Positioned(
+                          top: 4,
+                          left: 4,
+                          child: Material(
+                            color: Colors.black45,
+                            shape: const CircleBorder(),
+                            child: IconButton(
+                              iconSize: 18,
+                              tooltip: 'Baixar',
+                              icon: const Icon(
+                                Icons.download_outlined,
+                                color: Colors.white,
+                              ),
+                              onPressed: widget.onDownload,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+                if (widget.progress != null)
+                  LinearProgressIndicator(
+                    value: widget.progress!.clamp(0.0, 1.0),
+                    minHeight: 4,
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (widget.subtitle != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                    child: Text(
+                      widget.subtitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

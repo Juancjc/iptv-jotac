@@ -1,0 +1,44 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Test interface
+        run: flutter test test/design_test.dart test/favorites_screen_test.dart test/watch_history_screen_test.dart
+      - name: Build Windows
+        run: flutter build windows --release
+      - name: Package installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version: ([^+]+)').Matches[0].Groups[1].Value
+          $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $compiler)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          & $compiler "/DMyAppVersion=$version" installer/iptv_jotac.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          Move-Item installer/Output/IPTV_Jotac_Setup.exe "installer/Output/IPTV_Jotac_${version}_Windows_Setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: installer/Output/*_Windows_Setup.exe
+          if-no-files-found: error

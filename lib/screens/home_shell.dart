@@ -132,7 +132,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     NavigationRailDestination(
       icon: Icon(Icons.home_outlined),
       selectedIcon: Icon(Icons.home),
-      label: Text('Inicio'),
+      label: Text('Início'),
     ),
     NavigationRailDestination(
       icon: Icon(Icons.live_tv_outlined),
@@ -147,7 +147,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     NavigationRailDestination(
       icon: Icon(Icons.video_library_outlined),
       selectedIcon: Icon(Icons.video_library),
-      label: Text('Series'),
+      label: Text('Séries'),
     ),
     NavigationRailDestination(
       icon: Icon(Icons.favorite_outline),
@@ -172,7 +172,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     NavigationRailDestination(
       icon: Icon(Icons.settings_outlined),
       selectedIcon: Icon(Icons.settings),
-      label: Text('Configuracoes'),
+      label: Text('Configurações'),
     ),
   ];
 
@@ -199,9 +199,132 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const SettingsScreen(),
     ];
 
+    final compact = MediaQuery.sizeOf(context).width < 700;
+    final expanded = MediaQuery.sizeOf(context).width >= 1150;
+    Widget navigation({bool drawer = false}) => SafeArea(
+      child: SizedBox(
+        width: drawer || expanded ? 220 : 88,
+        child: Column(
+          children: [
+            if (drawer || expanded)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.play_circle_filled,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'JOTAC',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 12,
+                ),
+                children: [
+                  for (var i = 0; i < _destinations.length; i++) ...[
+                    if (i == 4 || i == 7)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10),
+                        child: Divider(height: 1),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Tooltip(
+                        message: (_destinations[i].label as Text).data!,
+                        child: Material(
+                          color: i == _index
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: .16)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              if (drawer) Navigator.of(context).pop();
+                              _selectSection(i);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 14,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: drawer || expanded
+                                    ? MainAxisAlignment.start
+                                    : MainAxisAlignment.center,
+                                children: [
+                                  IconTheme(
+                                    data: IconThemeData(
+                                      size: 22,
+                                      color: i == _index
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                          : Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                    ),
+                                    child: i == _index
+                                        ? _destinations[i].selectedIcon
+                                        : _destinations[i].icon,
+                                  ),
+                                  if (drawer || expanded) ...[
+                                    const SizedBox(width: 14),
+                                    DefaultTextStyle(
+                                      style: TextStyle(
+                                        color: i == _index
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                        fontWeight: i == _index
+                                            ? FontWeight.w800
+                                            : FontWeight.w500,
+                                      ),
+                                      child: _destinations[i].label,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  _RemoteControlRailButton(onPressed: _toggleRemoteControl),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
     return Scaffold(
+      drawer: compact ? Drawer(child: navigation(drawer: true)) : null,
       appBar: AppBar(
-        title: const Text('IPTV Jotac'),
+        title: compact
+            ? null
+            : const Text(
+                'IPTV Jotac',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+        titleSpacing: 24,
         bottom: syncStatuses.isEmpty
             ? null
             : _SyncProgressBar(statuses: syncStatuses.values.toList()),
@@ -209,23 +332,33 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           playlistsAsync.when(
             data: (playlists) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: DropdownButton<String?>(
-                value: selectedPlaylistId,
-                hint: const Text('Todas as listas'),
-                underline: const SizedBox.shrink(),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Todas as listas'),
-                  ),
-                  for (final playlist in playlists)
-                    DropdownMenuItem<String?>(
-                      value: playlist.id,
-                      child: Text(playlist.name),
+              child: SizedBox(
+                width: compact ? 180 : 220,
+                child: DropdownButton<String?>(
+                  isExpanded: true,
+                  value: playlists.any((p) => p.id == selectedPlaylistId)
+                      ? selectedPlaylistId
+                      : null,
+                  hint: const Text('Todas as listas'),
+                  underline: const SizedBox.shrink(),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Todas as listas'),
                     ),
-                ],
-                onChanged: (value) =>
-                    ref.read(selectedPlaylistIdProvider.notifier).state = value,
+                    for (final playlist in playlists)
+                      DropdownMenuItem<String?>(
+                        value: playlist.id,
+                        child: Text(
+                          playlist.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      ref.read(selectedPlaylistIdProvider.notifier).state =
+                          value,
+                ),
               ),
             ),
             loading: () => const SizedBox.shrink(),
@@ -244,27 +377,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       ),
       body: Row(
         children: [
-          // Scrollable so every section stays reachable on short screens
-          // (e.g. Fire TV renders at ~540dp tall).
-          LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: NavigationRail(
-                    selectedIndex: _index,
-                    onDestinationSelected: _selectSection,
-                    labelType: NavigationRailLabelType.all,
-                    destinations: _destinations,
-                    trailing: _RemoteControlRailButton(
-                      onPressed: _toggleRemoteControl,
-                    ),
-                  ),
-                ),
-              ),
+          if (!compact) ...[
+            navigation(),
+            VerticalDivider(
+              width: 1,
+              color: Theme.of(
+                context,
+              ).colorScheme.outlineVariant.withValues(alpha: .4),
             ),
-          ),
-          const VerticalDivider(width: 1),
+          ],
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
