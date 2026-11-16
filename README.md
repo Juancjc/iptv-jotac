@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/images/logo.png" alt="Logo IPTV Jotac" width="640">
+</p>
+
 # IPTV Jotac
 
 Cliente IPTV pessoal para Windows, Android e Android TV / Fire TV, construido do
@@ -9,6 +13,23 @@ embutido, baixar conteudo VOD para assistir offline e manter um historico de
 Este e um projeto pessoal e independente: nao possui verificacao de licenca,
 telemetria ou qualquer chamada "phone home" embutida. O unico tráfego de rede e
 para as fontes de conteudo que voce mesmo cadastra.
+
+## Capturas de tela
+
+Capturas reais da versão 1.3.0 no Windows, com o tema escuro e sem listas
+cadastradas. Os filmes, séries e canais aparecem após conectar sua própria lista.
+
+### Início
+
+![Tela inicial do IPTV Jotac, com navegação lateral e atalhos para TV ao vivo, filmes e séries](docs/screenshots/inicio.jpg)
+
+### Adicionar lista
+
+![Cadastro de listas com opções de URL M3U, Xtream Codes e QR Code](docs/screenshots/adicionar-lista.jpg)
+
+### Configurações
+
+![Configurações de aparência, controle pelo celular e downloads](docs/screenshots/configuracoes.jpg)
 
 ## Funcionalidades
 
