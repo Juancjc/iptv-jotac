@@ -7,6 +7,14 @@ on:
       - ".gitmodules"
       - ".github/workflows/switch.yml"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release to receive the NRO (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build-nro:
@@ -24,7 +32,7 @@ jobs:
 
       - name: Install portlibs (curl, ffmpeg, libmpv)
         run: |
-          for pkg in mbedtls-3.6.7-1 libssh2-1.11.1-1 dav1d-1.5.4-1 curl-8.21.0-3 ffmpeg-7.1.5-5 libmpv-0.36.0-5; do
+          for pkg in mbedtls-3.6.8-1 libssh2-1.11.1-1 dav1d-1.5.5-1 curl-8.23.0-3 ffmpeg-7.1.5-5 libmpv-0.36.0-5; do
             dkp-pacman --noconfirm -U $BASE_URL/switch-${pkg}-any.pkg.tar.zst
           done
           git config --system --add safe.directory '*'
@@ -42,3 +50,12 @@ jobs:
         with:
           name: IptvJotac-switch-${{ github.run_number }}
           path: switch/build/IptvJotac.nro
+          if-no-files-found: error
+
+      - name: Attach NRO to release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: switch/build/IptvJotac.nro
+          fail_on_unmatched_files: true
