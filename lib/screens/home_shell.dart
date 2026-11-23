@@ -8,6 +8,7 @@ import '../navigation.dart';
 import '../providers/database_provider.dart';
 import '../widgets/library_search.dart';
 import '../providers/playlist_providers.dart';
+import '../providers/playlist_refresh_provider.dart';
 import '../providers/remote_control_providers.dart';
 import '../widgets/remote_control_dialog.dart';
 import 'add_playlist_screen.dart';
@@ -45,13 +46,24 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => ref.read(remoteControlProvider.notifier).initialize(),
     );
-    // Open the local library immediately. Network refresh is explicit.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshOnStartup());
   }
 
   @override
   void dispose() {
     _remoteCommands?.cancel();
     super.dispose();
+  }
+
+  Future<void> _refreshOnStartup() async {
+    try {
+      final preferences = await ref.read(
+        playlistRefreshPreferencesProvider.future,
+      );
+      if (mounted && preferences.onStartup) await _syncAllPlaylists();
+    } catch (_) {
+      // Storage failures must not block opening the saved library.
+    }
   }
 
   bool _openingFromRemote = false;
@@ -191,6 +203,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(playlistRefreshSchedulerProvider);
     final playlistsAsync = ref.watch(playlistsProvider);
     final selectedPlaylistId = ref.watch(selectedPlaylistIdProvider);
     final syncStatuses = ref.watch(playlistSyncStatusProvider);
@@ -209,7 +222,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const WatchHistoryScreen(),
       const DownloadsScreen(),
       PlaylistsScreen(onConnected: () => _selectSection(0)),
-      SettingsScreen(onPlaylists: () => _selectSection(7)),
+      const SettingsScreen(),
     ];
 
     final compact = MediaQuery.sizeOf(context).width < 700;

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/remote_control_providers.dart';
 import '../providers/settings_providers.dart';
 import '../widgets/remote_control_dialog.dart';
+import '../widgets/playlist_refresh_options.dart';
 import 'playlists_screen.dart';
 
 /// Whether the phone remote is on, with a button to show its QR code.
@@ -226,8 +227,7 @@ class _SubtitlePreview extends StatelessWidget {
 }
 
 class SettingsScreen extends StatelessWidget {
-  final VoidCallback? onPlaylists;
-  const SettingsScreen({super.key, this.onPlaylists});
+  const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +258,7 @@ class SettingsScreen extends StatelessWidget {
       ),
       (
         'Playlists',
-        'Gerenciar e atualizar suas listas',
+        'Ao iniciar, horários e gerenciamento',
         Icons.playlist_play,
         Color(0xFFA08AE6),
       ),
@@ -313,61 +313,23 @@ class SettingsScreen extends StatelessWidget {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(14),
                           onTap: () {
-                            if (i == 4) {
-                              if (onPlaylists != null) {
-                                onPlaylists!();
-                              } else {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => Scaffold(
-                                      appBar: AppBar(
-                                        title: const Text('Playlists'),
-                                      ),
-                                      body: const PlaylistsScreen(),
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => Scaffold(
+                                  appBar: AppBar(
+                                    leading: IconButton(
+                                      tooltip: 'Voltar',
+                                      icon: const Icon(Icons.arrow_back),
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(),
+                                    ),
+                                    title: Text(
+                                      'Configurações • ${sections[i].$1}',
                                     ),
                                   ),
-                                );
-                              }
-                              return;
-                            }
-                            showDialog<void>(
-                              context: context,
-                              builder: (_) => Dialog(
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 600,
-                                    maxHeight: 620,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          24,
-                                          12,
-                                          12,
-                                          4,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                sections[i].$1,
-                                                style:
-                                                    theme.textTheme.titleLarge,
-                                              ),
-                                            ),
-                                            IconButton(
-                                              tooltip: 'Fechar',
-                                              icon: const Icon(Icons.close),
-                                              onPressed: () =>
-                                                  Navigator.of(context).pop(),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Expanded(child: _SettingsSection(i)),
-                                    ],
-                                  ),
+                                  body: i == 4
+                                      ? const PlaylistsScreen()
+                                      : _SettingsSection(i),
                                 ),
                               ),
                             );
@@ -418,14 +380,7 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 28),
-            const ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.offline_bolt_outlined),
-              title: Text('Sua biblioteca abre com os dados salvos'),
-              subtitle: Text(
-                'As listas não são baixadas ao abrir o app. Use Atualizar listas no topo ou Atualizar todas em Playlists quando quiser buscar novidades.',
-              ),
-            ),
+            const PlaylistRefreshOptions(),
           ],
         );
       },

@@ -5,6 +5,7 @@ import '../models/playlist.dart';
 import '../providers/database_provider.dart';
 import '../providers/playlist_providers.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/playlist_refresh_options.dart';
 import '../widgets/insecure_connection_banner.dart';
 import 'add_playlist_screen.dart';
 
@@ -58,17 +59,18 @@ class PlaylistsScreen extends ConsumerWidget {
         );
 
         if (playlists.isEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          return ListView(
             children: [
               header,
-              const Expanded(
-                child: EmptyState(
-                  icon: Icons.playlist_add,
-                  title: 'Nenhuma lista cadastrada',
-                  message:
-                      'Adicione uma lista M3U ou Xtream Codes para comecar.',
-                ),
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: PlaylistRefreshOptions(),
+              ),
+              const SizedBox(height: 24),
+              const EmptyState(
+                icon: Icons.playlist_add,
+                title: 'Nenhuma lista cadastrada',
+                message: 'Adicione uma lista M3U ou Xtream Codes para começar.',
               ),
             ],
           );
@@ -78,6 +80,11 @@ class PlaylistsScreen extends ConsumerWidget {
           padding: const EdgeInsets.only(bottom: 16),
           children: [
             header,
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: PlaylistRefreshOptions(),
+            ),
+            const Divider(),
             for (final (index, playlist) in playlists.indexed)
               Padding(
                 padding: const EdgeInsets.symmetric(
