@@ -19,6 +19,28 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('bounded local search filters before limiting and respects playlist', () async {
+    await database.batch((batch) {
+      for (final id in ['a', 'b']) {
+        batch.insert(database.playlists, PlaylistsCompanion.insert(
+          id: id, name: id, type: 'm3u', createdAt: DateTime(2026)));
+        for (var i = 0; i < 30; i++) {
+          batch.insert(database.channels, ChannelsCompanion.insert(
+            id: '$id-$i', playlistId: id, name: 'Canal $i', streamUrl: 'https://example.com/$i'));
+          batch.insert(database.movies, MoviesCompanion.insert(
+            id: '$id-$i', playlistId: id, title: 'Filme $i', streamUrl: 'https://example.com/$i'));
+          batch.insert(database.seriesTable, SeriesTableCompanion.insert(
+            id: '$id-$i', playlistId: id, title: 'Serie $i'));
+        }
+      }
+    });
+    expect(await repository.watchChannels(searchQuery: 'CANAL', limit: 20).first, hasLength(20));
+    expect((await repository.watchChannels(playlistId: 'b', searchQuery: '29', limit: 1).first).single.id, 'b-29');
+    expect((await repository.watchMovies(playlistId: 'b', searchQuery: '29', limit: 1).first).single.id, 'b-29');
+    expect((await repository.watchSeries(playlistId: 'b', searchQuery: '29', limit: 1).first).single.id, 'b-29');
+    expect(await repository.watchMovies(searchQuery: 'inexistente', limit: 20).first, isEmpty);
+  });
+
   test('updatePlaylist saves new name and Xtream credentials', () async {
     final playlist = await repository.addXtreamPlaylist(
       name: 'Antiga',

@@ -97,6 +97,7 @@ class _MoviesScreenState extends ConsumerState<MoviesScreen> {
       itemBuilder: (context, index) {
         final movie = movies[index];
         return ContentCard(
+          key: ValueKey(movie.id),
           title: movie.title,
           imageUrl: movie.posterUrl,
           isFavorite: movie.isFavorite,

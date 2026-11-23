@@ -13,6 +13,7 @@ import '../providers/epg_providers.dart';
 import '../providers/playlist_providers.dart';
 import '../services/epg_service.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/remote_content_action.dart';
 import 'player_screen.dart';
 
 class LiveTvScreen extends ConsumerStatefulWidget {
@@ -300,6 +301,13 @@ class _ChannelSidebar extends StatelessWidget {
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
             ),
           ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            child: Text(
+              'Segure OK ou pressione Menu para favoritar',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
           const SizedBox(height: 5),
           if (showChannels)
             ..._buildChannelList(colors)
@@ -382,6 +390,7 @@ class _ChannelSidebar extends StatelessWidget {
                   final channel = channels[index];
                   final selected = channel.id == selectedChannelId;
                   return _ChannelTile(
+                    key: ValueKey(channel.id),
                     channel: channel,
                     selected: selected,
                     onTap: () => onChannelSelected(channel),
@@ -537,6 +546,7 @@ class _ChannelTile extends StatelessWidget {
   final VoidCallback onToggleFavorite;
 
   const _ChannelTile({
+    super.key,
     required this.channel,
     required this.selected,
     required this.onTap,
@@ -550,7 +560,8 @@ class _ChannelTile extends StatelessWidget {
       color: selected
           ? colors.primary.withValues(alpha: .14)
           : Colors.transparent,
-      child: InkWell(
+      child: RemoteContentAction(
+        onToggleFavorite: onToggleFavorite,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.only(left: 10),

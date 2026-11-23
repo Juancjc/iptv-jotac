@@ -94,6 +94,7 @@ class _SeriesScreenState extends ConsumerState<SeriesScreen> {
       itemBuilder: (context, index) {
         final series = seriesList[index];
         return ContentCard(
+          key: ValueKey(series.id),
           title: series.title,
           imageUrl: series.posterUrl,
           isFavorite: series.isFavorite,

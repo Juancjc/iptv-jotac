@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'remote_content_action.dart';
 
 /// A poster/logo card used across the live TV, movies and series grids.
 class ContentCard extends StatefulWidget {
@@ -49,7 +50,8 @@ class _ContentCardState extends State<ContentCard> {
         child: Card(
           margin: EdgeInsets.zero,
           clipBehavior: Clip.antiAlias,
-          child: InkWell(
+          child: RemoteContentAction(
+            onToggleFavorite: widget.onToggleFavorite,
             onTap: widget.onTap,
             onFocusChange: (focused) {
               setState(() => _focused = focused);
@@ -82,6 +84,28 @@ class _ContentCardState extends State<ContentCard> {
                                 Icons.play_arrow_rounded,
                                 color: Colors.white,
                                 size: 32,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (_focused && widget.onToggleFavorite != null)
+                        Positioned(
+                          bottom: 6,
+                          left: 6,
+                          right: 6,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(color: Colors.black87),
+                            child: Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Text(
+                                widget.isFavorite
+                                    ? 'Segure OK: remover favorito'
+                                    : 'Segure OK: favoritar',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                ),
                               ),
                             ),
                           ),
@@ -186,6 +210,7 @@ class _Poster extends StatelessWidget {
     return Image.network(
       url,
       fit: BoxFit.cover,
+      cacheWidth: 360,
       errorBuilder: (context, error, stackTrace) => ColoredBox(
         color: background,
         child: const Center(child: Icon(Icons.broken_image_outlined, size: 36)),

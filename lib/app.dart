@@ -20,12 +20,12 @@ class IptvJotacApp extends ConsumerWidget {
           primary: const Color(0xFFE04848),
           onPrimary: Colors.white,
           secondary: const Color(0xFFC5323A),
-          surface: const Color(0xFF121014),
-          surfaceContainer: const Color(0xFF29262C),
-          surfaceContainerHigh: const Color(0xFF332E34),
-          surfaceContainerHighest: const Color(0xFF3D373E),
+          surface: const Color(0xFF0A0D14),
+          surfaceContainer: const Color(0xFF171D29),
+          surfaceContainerHigh: const Color(0xFF202837),
+          surfaceContainerHighest: const Color(0xFF2B3444),
           outline: const Color(0xFF8F858F),
-          outlineVariant: const Color(0xFF494149),
+          outlineVariant: const Color(0xFF364052),
           error: const Color(0xFFFF5A5F),
           errorContainer: const Color(0xFF5C171B),
         );
@@ -44,7 +44,7 @@ class IptvJotacApp extends ConsumerWidget {
         colorScheme: darkScheme,
         brightness: Brightness.dark,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF100E12),
+        scaffoldBackgroundColor: const Color(0xFF0B0F19),
         cardTheme: CardThemeData(
           color: darkScheme.surfaceContainer,
           elevation: 0,
@@ -54,11 +54,11 @@ class IptvJotacApp extends ConsumerWidget {
           ),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121014),
+          backgroundColor: Color(0xFF0A0D14),
           surfaceTintColor: Colors.transparent,
         ),
         navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: const Color(0xFF121014),
+          backgroundColor: const Color(0xFF0A0D14),
           indicatorColor: darkScheme.primary.withValues(alpha: .2),
           selectedIconTheme: IconThemeData(color: darkScheme.primary),
           selectedLabelTextStyle: TextStyle(

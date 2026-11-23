@@ -17,39 +17,41 @@ final searchQueryProvider = StateProvider<String>((ref) => '');
 
 /// Unfiltered content streams used by the dashboard counters and by screens
 /// that implement their own local search/category filters.
-final allChannelsProvider = StreamProvider<List<Channel>>((ref) {
+final allChannelsProvider = StreamProvider.autoDispose<List<Channel>>((ref) {
   final repo = ref.watch(playlistRepositoryProvider);
   final playlistId = ref.watch(selectedPlaylistIdProvider);
   return repo.watchChannels(playlistId: playlistId);
 });
 
-final allMoviesProvider = StreamProvider<List<Movie>>((ref) {
+final allMoviesProvider = StreamProvider.autoDispose<List<Movie>>((ref) {
   final repo = ref.watch(playlistRepositoryProvider);
   final playlistId = ref.watch(selectedPlaylistIdProvider);
   return repo.watchMovies(playlistId: playlistId);
 });
 
-final allSeriesProvider = StreamProvider<List<domain.Series>>((ref) {
+final allSeriesProvider = StreamProvider.autoDispose<List<domain.Series>>((
+  ref,
+) {
   final repo = ref.watch(playlistRepositoryProvider);
   final playlistId = ref.watch(selectedPlaylistIdProvider);
   return repo.watchSeries(playlistId: playlistId);
 });
 
-final channelsProvider = StreamProvider<List<Channel>>((ref) {
+final channelsProvider = StreamProvider.autoDispose<List<Channel>>((ref) {
   final repo = ref.watch(playlistRepositoryProvider);
   final playlistId = ref.watch(selectedPlaylistIdProvider);
   final query = ref.watch(searchQueryProvider);
   return repo.watchChannels(playlistId: playlistId, searchQuery: query);
 });
 
-final moviesProvider = StreamProvider<List<Movie>>((ref) {
+final moviesProvider = StreamProvider.autoDispose<List<Movie>>((ref) {
   final repo = ref.watch(playlistRepositoryProvider);
   final playlistId = ref.watch(selectedPlaylistIdProvider);
   final query = ref.watch(searchQueryProvider);
   return repo.watchMovies(playlistId: playlistId, searchQuery: query);
 });
 
-final seriesProvider = StreamProvider<List<domain.Series>>((ref) {
+final seriesProvider = StreamProvider.autoDispose<List<domain.Series>>((ref) {
   final repo = ref.watch(playlistRepositoryProvider);
   final playlistId = ref.watch(selectedPlaylistIdProvider);
   final query = ref.watch(searchQueryProvider);
@@ -71,10 +73,13 @@ class PlaylistSyncStatus {
   const PlaylistSyncStatus(this.playlistName, this.message, [this.progress]);
 }
 
-final playlistSyncStatusProvider = StateProvider<Map<String, PlaylistSyncStatus>>((ref) => {});
+final playlistSyncStatusProvider =
+    StateProvider<Map<String, PlaylistSyncStatus>>((ref) => {});
 
 /// Last sync error per playlist id; cleared when the playlist syncs again.
-final playlistSyncErrorsProvider = StateProvider<Map<String, String>>((ref) => {});
+final playlistSyncErrorsProvider = StateProvider<Map<String, String>>(
+  (ref) => {},
+);
 
 final playlistSyncControllerProvider = Provider<PlaylistSyncController>((ref) {
   return PlaylistSyncController(ref);
@@ -89,21 +94,30 @@ class PlaylistSyncController {
   PlaylistSyncController(this._ref);
 
   Future<void> sync(Playlist playlist) async {
+    if (_ref.read(syncingPlaylistIdsProvider).contains(playlist.id)) return;
     final notifier = _ref.read(syncingPlaylistIdsProvider.notifier);
     notifier.state = {..._ref.read(syncingPlaylistIdsProvider), playlist.id};
     _setError(playlist.id, null);
-    _setStatus(playlist.id, PlaylistSyncStatus(playlist.name, 'Atualizando...'));
+    _setStatus(
+      playlist.id,
+      PlaylistSyncStatus(playlist.name, 'Atualizando...'),
+    );
     var lastUpdate = DateTime.fromMillisecondsSinceEpoch(0);
     try {
-      await _ref.read(playlistRepositoryProvider).syncPlaylist(
-        playlist,
-        onProgress: (message, progress) {
-          final now = DateTime.now();
-          if (now.difference(lastUpdate) < _progressInterval) return;
-          lastUpdate = now;
-          _setStatus(playlist.id, PlaylistSyncStatus(playlist.name, message, progress));
-        },
-      );
+      await _ref
+          .read(playlistRepositoryProvider)
+          .syncPlaylist(
+            playlist,
+            onProgress: (message, progress) {
+              final now = DateTime.now();
+              if (now.difference(lastUpdate) < _progressInterval) return;
+              lastUpdate = now;
+              _setStatus(
+                playlist.id,
+                PlaylistSyncStatus(playlist.name, message, progress),
+              );
+            },
+          );
     } catch (error) {
       _setError(playlist.id, error.toString());
       rethrow;

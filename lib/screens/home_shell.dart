@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../navigation.dart';
 
 import '../providers/database_provider.dart';
+import '../widgets/library_search.dart';
 import '../providers/playlist_providers.dart';
 import '../providers/remote_control_providers.dart';
 import '../widgets/remote_control_dialog.dart';
@@ -44,9 +45,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => ref.read(remoteControlProvider.notifier).initialize(),
     );
-    // Lists change often on the provider side, so they are downloaded again
-    // every time the app opens. The cached content stays usable meanwhile.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncAllPlaylists());
+    // Open the local library immediately. Network refresh is explicit.
   }
 
   @override
@@ -114,6 +113,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         .read(playlistRepositoryProvider)
         .watchPlaylists()
         .first;
+    if (!mounted) return;
+    var failed = 0;
     final controller = ref.read(playlistSyncControllerProvider);
     // One at a time: TV boxes have little memory for parsing big lists.
     for (final playlist in playlists) {
@@ -122,9 +123,21 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       try {
         await controller.sync(playlist);
       } catch (_) {
+        failed++;
         // Recorded in playlistSyncErrorsProvider and shown on the Listas tab;
         // the previously downloaded content keeps working.
       }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed == 0
+                ? 'Listas atualizadas'
+                : 'Falha em $failed lista(s). Veja os detalhes em Listas.',
+          ),
+        ),
+      );
     }
   }
 
@@ -196,17 +209,26 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const WatchHistoryScreen(),
       const DownloadsScreen(),
       PlaylistsScreen(onConnected: () => _selectSection(0)),
-      const SettingsScreen(),
+      SettingsScreen(onPlaylists: () => _selectSection(7)),
     ];
 
     final compact = MediaQuery.sizeOf(context).width < 700;
-    final expanded = MediaQuery.sizeOf(context).width >= 1150;
+
     Widget navigation({bool drawer = false}) => SafeArea(
       child: SizedBox(
-        width: drawer || expanded ? 220 : 88,
+        width: drawer ? 220 : 76,
         child: Column(
           children: [
-            if (drawer || expanded)
+            if (!drawer)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Image.asset(
+                  "assets/images/icone.png",
+                  width: 36,
+                  height: 36,
+                ),
+              ),
+            if (drawer)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
                 child: Row(
@@ -262,7 +284,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                                 vertical: 14,
                               ),
                               child: Row(
-                                mainAxisAlignment: drawer || expanded
+                                mainAxisAlignment: drawer
                                     ? MainAxisAlignment.start
                                     : MainAxisAlignment.center,
                                 children: [
@@ -281,7 +303,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                                         ? _destinations[i].selectedIcon
                                         : _destinations[i].icon,
                                   ),
-                                  if (drawer || expanded) ...[
+                                  if (drawer) ...[
                                     const SizedBox(width: 14),
                                     DefaultTextStyle(
                                       style: TextStyle(
@@ -319,50 +341,82 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       drawer: compact ? Drawer(child: navigation(drawer: true)) : null,
       appBar: AppBar(
         title: compact
-            ? null
-            : const Text(
-                'IPTV Jotac',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ? const Text('Jotac', style: TextStyle(fontWeight: FontWeight.w800))
+            : ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 500),
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 16,
+                    ),
+                  ),
+                  icon: const Icon(Icons.search, size: 20),
+                  label: const Text(
+                    'Buscar canais, filmes e séries…',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPressed: () => showLibrarySearch(context),
+                ),
               ),
         titleSpacing: 24,
         bottom: syncStatuses.isEmpty
             ? null
             : _SyncProgressBar(statuses: syncStatuses.values.toList()),
         actions: [
-          playlistsAsync.when(
-            data: (playlists) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: SizedBox(
-                width: compact ? 180 : 220,
-                child: DropdownButton<String?>(
-                  isExpanded: true,
-                  value: playlists.any((p) => p.id == selectedPlaylistId)
-                      ? selectedPlaylistId
-                      : null,
-                  hint: const Text('Todas as listas'),
-                  underline: const SizedBox.shrink(),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Todas as listas'),
-                    ),
-                    for (final playlist in playlists)
-                      DropdownMenuItem<String?>(
-                        value: playlist.id,
-                        child: Text(
-                          playlist.name,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+          if (compact)
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Buscar na biblioteca',
+              onPressed: () => showLibrarySearch(context),
+            ),
+          if (MediaQuery.sizeOf(context).width >= 1100) const _HeaderClock(),
+          if (!compact)
+            playlistsAsync.when(
+              data: (playlists) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: SizedBox(
+                  width: compact ? 180 : 220,
+                  child: DropdownButton<String?>(
+                    isExpanded: true,
+                    value: playlists.any((p) => p.id == selectedPlaylistId)
+                        ? selectedPlaylistId
+                        : null,
+                    hint: const Text('Todas as listas'),
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Todas as listas'),
                       ),
-                  ],
-                  onChanged: (value) =>
-                      ref.read(selectedPlaylistIdProvider.notifier).state =
-                          value,
+                      for (final playlist in playlists)
+                        DropdownMenuItem<String?>(
+                          value: playlist.id,
+                          child: Text(
+                            playlist.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        ref.read(selectedPlaylistIdProvider.notifier).state =
+                            value,
+                  ),
                 ),
               ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
             ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
+          IconButton(
+            icon: const Icon(Icons.sync),
+            tooltip: 'Atualizar listas',
+            onPressed:
+                syncStatuses.isNotEmpty ||
+                    !(playlistsAsync.valueOrNull?.isNotEmpty ?? false)
+                ? null
+                : _syncAllPlaylists,
           ),
           IconButton(
             icon: const Icon(Icons.add),
@@ -387,13 +441,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ),
           ],
           Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: KeyedSubtree(
-                key: ValueKey(_index),
-                child: screens[_index],
-              ),
-            ),
+            child: KeyedSubtree(key: ValueKey(_index), child: screens[_index]),
           ),
         ],
       ),
@@ -460,36 +508,74 @@ class _RemoteControlRailButton extends ConsumerWidget {
     final color = remote.active ? colors.primary : colors.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              remote.starting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      remote.active ? Icons.phonelink : Icons.phonelink_off,
-                      color: color,
-                    ),
-              const SizedBox(height: 4),
-              Text(
-                remote.active ? 'Controle ON' : 'Controle',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: color,
-                  fontWeight: remote.active ? FontWeight.w700 : FontWeight.w400,
-                ),
-              ),
-            ],
+      child: Tooltip(
+        message: remote.active
+            ? "Controle pelo celular ativo"
+            : "Controle pelo celular",
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                remote.starting
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        remote.active ? Icons.phonelink : Icons.phonelink_off,
+                        color: color,
+                      ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HeaderClock extends StatefulWidget {
+  const _HeaderClock();
+  @override
+  State<_HeaderClock> createState() => _HeaderClockState();
+}
+
+class _HeaderClockState extends State<_HeaderClock> {
+  late final Timer _timer;
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+          ),
+          Text(
+            '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
       ),
     );
   }

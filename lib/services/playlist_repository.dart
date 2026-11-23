@@ -352,49 +352,91 @@ class PlaylistRepository {
   // Content queries
   // ---------------------------------------------------------------------
 
-  Stream<List<Channel>> watchChannels({String? playlistId, String? searchQuery}) {
+  Stream<List<Channel>> watchChannels({
+    String? playlistId,
+    String? searchQuery,
+    int? limit,
+  }) {
     final query = _db.select(_db.channels);
     if (playlistId != null) {
       query.where((t) => t.playlistId.equals(playlistId));
+    }
+    if (limit != null) {
+      // Bounded header search: filter in SQLite before materializing objects.
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        query.where((t) => t.name.contains(searchQuery));
+      }
+      query.limit(limit);
     }
     return query.watch().map(
       (rows) => rows
           .map(_channelFromRow)
           .where(
-            (c) =>
-                searchQuery == null || searchQuery.isEmpty || c.name.toLowerCase().contains(searchQuery.toLowerCase()),
+            (item) =>
+                limit != null ||
+                searchQuery == null ||
+                searchQuery.isEmpty ||
+                item.name.toLowerCase().contains(searchQuery.toLowerCase()),
           )
           .toList(),
     );
   }
 
-  Stream<List<Movie>> watchMovies({String? playlistId, String? searchQuery}) {
+  Stream<List<Movie>> watchMovies({
+    String? playlistId,
+    String? searchQuery,
+    int? limit,
+  }) {
     final query = _db.select(_db.movies);
     if (playlistId != null) {
       query.where((t) => t.playlistId.equals(playlistId));
+    }
+    if (limit != null) {
+      // Bounded header search: filter in SQLite before materializing objects.
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        query.where((t) => t.title.contains(searchQuery));
+      }
+      query.limit(limit);
     }
     return query.watch().map(
       (rows) => rows
           .map(_movieFromRow)
           .where(
-            (m) =>
-                searchQuery == null || searchQuery.isEmpty || m.title.toLowerCase().contains(searchQuery.toLowerCase()),
+            (item) =>
+                limit != null ||
+                searchQuery == null ||
+                searchQuery.isEmpty ||
+                item.title.toLowerCase().contains(searchQuery.toLowerCase()),
           )
           .toList(),
     );
   }
 
-  Stream<List<domain.Series>> watchSeries({String? playlistId, String? searchQuery}) {
+  Stream<List<domain.Series>> watchSeries({
+    String? playlistId,
+    String? searchQuery,
+    int? limit,
+  }) {
     final query = _db.select(_db.seriesTable);
     if (playlistId != null) {
       query.where((t) => t.playlistId.equals(playlistId));
+    }
+    if (limit != null) {
+      // Bounded header search: filter in SQLite before materializing objects.
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        query.where((t) => t.title.contains(searchQuery));
+      }
+      query.limit(limit);
     }
     return query.watch().map(
       (rows) => rows
           .map(_seriesFromRow)
           .where(
-            (s) =>
-                searchQuery == null || searchQuery.isEmpty || s.title.toLowerCase().contains(searchQuery.toLowerCase()),
+            (item) =>
+                limit != null ||
+                searchQuery == null ||
+                searchQuery.isEmpty ||
+                item.title.toLowerCase().contains(searchQuery.toLowerCase()),
           )
           .toList(),
     );
